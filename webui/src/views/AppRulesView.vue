@@ -2,7 +2,7 @@
 import { ref, onMounted, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { Bridge } from '@/utils/bridge';
-import { getPackagesInfo } from '@/kernelsu';
+import { getPackagesInfo, toast } from '@/kernelsu';
 import { useSchedulerStore } from '@/stores/scheduler';
 
 const { t } = useI18n();
@@ -72,12 +72,18 @@ const openMenu = (pkg: string) => {
 
 const onSelectAction = async (item: any) => {
   showActionSheet.value = false;
-  if (item.isDelete) {
-    delete store.appRules[selectedPkg.value];
-    await Bridge.saveAppRule(selectedPkg.value, '');
-  } else {
-    store.appRules[selectedPkg.value] = item.modeKey;
-    await Bridge.saveAppRule(selectedPkg.value, item.modeKey);
+  const pkg = selectedPkg.value;
+  try {
+    // 先写盘成功再更新界面，避免保存失败时界面显示了一个并未生效的规则
+    if (item.isDelete) {
+      await Bridge.saveAppRule(pkg, '');
+      delete store.appRules[pkg];
+    } else {
+      await Bridge.saveAppRule(pkg, item.modeKey);
+      store.appRules[pkg] = item.modeKey;
+    }
+  } catch (e) {
+    toast(t('save_failed'));
   }
 };
 </script>

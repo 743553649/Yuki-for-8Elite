@@ -27,8 +27,13 @@ onMounted(() => {
 });
 
 const handleModeSelect = async (modeKey: string) => {
-  await store.switchMode(modeKey);
-  // 删除了 Vant 的 showToast，底层 Bridge.setMode 已经自带了原生 toast 提示
+  try {
+    await store.switchMode(modeKey);
+    // 删除了 Vant 的 showToast，底层 Bridge.setMode 已经自带了原生 toast 提示
+  } catch (e) {
+    // 读取/写入规则失败时中止切换，界面保持原模式，不再静默失败
+    toast(t('save_failed'));
+  }
 };
 
 // 点击复制 QQ 群号
@@ -99,7 +104,7 @@ const copyQQGroup = async () => {
       <van-cell-group inset :border="false">
         <van-cell 
           :title="t('qq_group')" 
-          value="103609137" 
+          value="1036909137"
           icon="qq" 
           clickable 
           @click="copyQQGroup" 

@@ -24,16 +24,25 @@ const fetchLog = async () => {
   }
 };
 
+// 日志内容可能包含应用可控的字符串（例如进程名），必须先把 HTML 特殊字符
+// 转义，再做高亮；否则会被 v-html 当标签执行，而页面里存在 root 权限的执行桥。
+const escapeHtml = (text: string): string => text
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+
 // 使用正则对日志内容进行高亮解析
 const formattedLog = computed(() => {
-  if (!logContent.value) return `<div class="log-empty">${t('log_empty')}</div>`;
-  
+  if (!logContent.value) return `<div class="log-empty">${escapeHtml(t('log_empty'))}</div>`;
+
   return logContent.value.split('\n').map(line => {
     // 过滤掉空行
     if (!line.trim()) return '';
 
     // 1. 高亮时间戳 [2026-02-23 02:31:07]
-    let html = line.replace(/\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]/g, match => `<span class="log-time">${match}</span>`);
+    let html = escapeHtml(line).replace(/\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]/g, match => `<span class="log-time">${match}</span>`);
     
     // 2. 高亮日志等级 [INFO], [WARN], [ERROR]
     html = html.replace(/\[INFO\]/g, `<span class="log-info">[INFO]</span>`);

@@ -11,6 +11,7 @@ const { t } = useI18n();
 const activeTab = ref('rules');
 const currentData = ref<any>({});
 const loading = ref(false);
+const dataReady = ref(false);
 const activeNames = ref<string[]>([]);
 
 const showEditDialog = ref(false);
@@ -126,11 +127,16 @@ const collectExpandPaths = (obj: any, basePath: string): string[] => {
 
 const loadData = async () => {
   loading.value = true;
+  // 读取失败时必须清空页面数据并禁止保存，
+  // 否则会把上一页/空对象当成完整配置写回，造成规则丢失。
+  dataReady.value = false;
+  currentData.value = {};
   try {
     currentData.value = activeTab.value === 'rules'
       ? await Bridge.getRulesConfig()
       : await Bridge.getMainConfig();
     activeNames.value = collectExpandPaths(displayedData.value, '');
+    dataReady.value = true;
   } catch (e) {
     // 3. 替换为原生 toast
     toast(t('load_failed'));
@@ -142,6 +148,11 @@ const loadData = async () => {
 onMounted(loadData);
 
 const saveConfig = async () => {
+  // 数据没有成功加载过就拒绝写盘，避免用空对象覆盖现有配置
+  if (!dataReady.value) {
+    toast(t('load_failed'));
+    return;
+  }
   try {
     if (activeTab.value === 'rules') await Bridge.saveRulesConfig(currentData.value);
     else await Bridge.saveMainConfig(currentData.value);
@@ -332,11 +343,15 @@ const RecursiveItem = defineComponent({
 
     <van-loading v-if="loading" class="loading-center" vertical>{{ t('loading') }}</van-loading>
 
-    <div v-else class="config-content">
+    <div v-else-if="dataReady" class="config-content">
       <van-collapse v-model="activeNames" :border="false">
         <RecursiveItem v-for="(val, key) in displayedData" :key="key" :name="String(key)" :value="val" :path="String(key)" />
       </van-collapse>
       <div style="height: 60px;"></div>
+    </div>
+
+    <div v-else class="config-content">
+      <p class="load-failed-hint">{{ t('load_failed') }}</p>
     </div>
 
     <van-dialog v-model:show="showEditDialog" :title="editingFrequencySteps ? t('freq_range_steps_below') : t('edit')"
@@ -363,6 +378,7 @@ const RecursiveItem = defineComponent({
 .config-editor { min-height: 100vh; background: #f7f8fa; }
 .tab-container { padding: 12px 16px; background: #fff; margin-bottom: 8px; }
 .loading-center { padding-top: 100px; }
+.load-failed-hint { text-align: center; color: #969799; font-size: 14px; padding-top: 80px; }
 .config-content { padding: 0 12px; }
 .nested-group { margin-bottom: 4px; border-radius: 8px; overflow: hidden; }
 :deep(.van-collapse-item__content) { padding: 0 0 0 16px; background: #fafafa; }

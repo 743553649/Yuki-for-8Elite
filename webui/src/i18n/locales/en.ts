@@ -34,6 +34,7 @@ export default {
   log_terminal_title: '{file} — {shell}',
   read_failed: 'Read failed: {path}',
   write_failed: 'Write failed: {path}',
+  config_parse_failed: 'Config is not a valid YAML object; nothing was written: {path}',
   load_failed: 'Load failed',
   saved: 'Saved',
   save_failed: 'Save failed',

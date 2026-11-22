@@ -20,6 +20,32 @@ const PATHS = {
 
 const isDev = import.meta.env.DEV || typeof window.ksu === 'undefined';
 
+// 把任意 UTF-8 文本编码成 base64。写入文件时只把 base64 交给 shell，
+// 避免内容里的 $、反引号、反斜杠被 shell 解释（轻则写坏 YAML，重则执行命令）。
+const encodeBase64Utf8 = (text: string): string => {
+  const bytes = new TextEncoder().encode(text);
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+};
+
+// 严格解析配置文件：读取失败或内容不是 YAML 对象时直接抛错，绝不返回空对象。
+// 调用方只有在拿到合法对象后才允许写回，防止把现有规则整体覆盖成空配置。
+const parseConfigObject = (text: string, path: string): Record<string, unknown> => {
+  if (!text.trim()) return {};
+  let parsed: unknown;
+  try {
+    parsed = yaml.load(text);
+  } catch (e) {
+    throw new Error(i18n.global.t('config_parse_failed', { path }) as string);
+  }
+  if (parsed == null) return {};
+  if (typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error(i18n.global.t('config_parse_failed', { path }) as string);
+  }
+  return parsed as Record<string, unknown>;
+};
+
 const RealBridge = {
   async isDaemonRunning(): Promise<boolean> {
     try {
@@ -36,14 +62,19 @@ const RealBridge = {
     return stdout;
   },
   async writeFile(path: string, content: string): Promise<void> {
-    const escapedContent = content.replace(/"/g, '\\"');
-    const { errno } = await exec(`echo "${escapedContent}" > "${path}"`);
+    // base64 的字符集只有 A-Za-z0-9+/=，放进 shell 单引号里没有注入风险。
+    const encoded = encodeBase64Utf8(content);
+    const { errno } = await exec(`printf '%s' '${encoded}' | base64 -d > "${path}"`);
     if (errno !== 0) throw new Error(i18n.global.t('write_failed', { path }) as string);
   },
 
-  async getRulesConfig(): Promise<any> { try { return yaml.load(await this.readFile(PATHS.RULES_YAML)) || {}; } catch (e) { return {}; } },
+  async getRulesConfig(): Promise<any> {
+    return parseConfigObject(await this.readFile(PATHS.RULES_YAML), PATHS.RULES_YAML);
+  },
   async saveRulesConfig(config: any): Promise<void> { await this.writeFile(PATHS.RULES_YAML, yaml.dump(config)); },
-  async getMainConfig(): Promise<any> { try { return yaml.load(await this.readFile(PATHS.CONFIG_YAML)) || {}; } catch (e) { return {}; } },
+  async getMainConfig(): Promise<any> {
+    return parseConfigObject(await this.readFile(PATHS.CONFIG_YAML), PATHS.CONFIG_YAML);
+  },
   async saveMainConfig(config: any): Promise<void> { await this.writeFile(PATHS.CONFIG_YAML, yaml.dump(config)); toast(i18n.global.t('core_config_saved') as string); },
 
   async getCurrentMode(): Promise<string> { try { return (await this.readFile(PATHS.CURRENT_MODE)).trim(); } catch (e) { return 'balance'; } },
@@ -73,7 +104,11 @@ const RealBridge = {
 
     return [];
   },
-  async getAppRules(): Promise<Record<string, string>> { return (await this.getRulesConfig()).app_modes || {}; },
+  // 只读展示用：读取失败时降级为空列表，不影响页面运行；
+  // 任何写入路径都会重新严格读取，失败就中止，不会拿空对象覆盖配置。
+  async getAppRules(): Promise<Record<string, string>> {
+    try { return (await this.getRulesConfig()).app_modes || {}; } catch (e) { return {}; }
+  },
   
   // ================= 修改这里 =================
   async saveAppRule(packageName: string, mode: string): Promise<void> {
@@ -122,16 +157,6 @@ const RealBridge = {
         .filter(s => /^policy\d+$/.test(s))
         .map(s => parseInt(s.replace('policy', ''), 10))
         .sort((a, b) => a - b);
-    } catch (e) {
-      return [];
-    }
-  },
-
-  async getAvailableFreqs(policyNum: number): Promise<string[]> {
-    try {
-      const path = `/sys/devices/system/cpu/cpufreq/policy${policyNum}/scaling_available_frequencies`;
-      const raw = await this.readFile(path);
-      return raw.trim().split(/\s+/).filter(Boolean);
     } catch (e) {
       return [];
     }
