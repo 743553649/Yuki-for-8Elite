@@ -110,3 +110,17 @@ main-config-watch-thread-create = 主配置监控线程已创建
 
 # --- Logger ---
 log-level-updated = 日志级别已更新为: { $level }
+
+# --- Maintenance ---
+config-load-failed = [Config] 读取配置失败 { $path }: { $error }。使用默认参数启动
+baseline-restored = [Baseline] 检测到上次异常退出留下的快照，已恢复原始 CPU 状态
+baseline-restore-failed = [Baseline] 恢复原始 CPU 状态失败: { $error }
+signal-handler-install-failed = [Main] 安装退出信号处理失败: { $error }
+scheduler-shutdown-signal = [Scheduler] 收到退出信号，正在恢复 CPU 状态并退出
+monitor-thread-panicked = [Main] 监控线程异常退出
+scheduler-thread-panicked = [Main] 调度线程异常退出
+yumi-module-stopped = yumi-module 已退出
+monitor-fps-retrying = [Main] FPS 监控将在 { $secs } 秒后重试: { $error }
+monitor-cpu-retrying = [Main] CPU 监控将在 { $secs } 秒后重试: { $error }
+fas-temp-throttle-on = [FAS] 温度 { $temp }℃ 达到阈值 { $threshold }℃，性能封顶至 P={ $perf }
+fas-temp-throttle-off = [FAS] 温度回落到 { $temp }℃，解除温度封顶

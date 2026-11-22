@@ -111,3 +111,17 @@ main-config-watch-thread-create = Main config watcher thread created.
 
 # --- Logger ---
 log-level-updated = Log level updated to: { $level }
+
+# --- Maintenance ---
+config-load-failed = [Config] Failed to read config { $path }: { $error }. Starting with defaults
+baseline-restored = [Baseline] Found a snapshot from an unclean exit; restored original CPU state
+baseline-restore-failed = [Baseline] Failed to restore original CPU state: { $error }
+signal-handler-install-failed = [Main] Failed to install shutdown signal handlers: { $error }
+scheduler-shutdown-signal = [Scheduler] Shutdown signal received; restoring CPU state
+monitor-thread-panicked = [Main] Monitor thread panicked
+scheduler-thread-panicked = [Main] Scheduler thread panicked
+yumi-module-stopped = yumi-module stopped
+monitor-fps-retrying = [Main] FPS monitor will retry in { $secs }s: { $error }
+monitor-cpu-retrying = [Main] CPU monitor will retry in { $secs }s: { $error }
+fas-temp-throttle-on = [FAS] Temperature { $temp }C reached threshold { $threshold }C; capping perf at { $perf }
+fas-temp-throttle-off = [FAS] Temperature fell to { $temp }C; removing thermal cap

@@ -26,6 +26,7 @@ pub mod config;
 pub mod scheduler;
 pub mod fas;
 pub mod cpu_load_governor;
+pub mod baseline;
 mod cpufreq;
 mod monitor_health;
 
@@ -105,12 +106,20 @@ pub(super) fn auto_compute_capacity_weights(policies: &[CpuPolicy]) -> Option<Ve
     }).collect())
 }
 
-pub fn start_scheduler_thread(rx: mpsc::Receiver<DaemonEvent>) -> Result<()> {
+pub fn start_scheduler_thread(rx: mpsc::Receiver<DaemonEvent>) -> Result<thread::JoinHandle<()>> {
     let root = common::get_module_root();
     let config_path = root.join("config/config.yaml");
-    let config_dir = root.join("config"); 
+    let config_dir = root.join("config");
 
-    let config = Config::from_file(config_path.to_str().unwrap()).unwrap_or_default();
+    // 配置读不出来时仍要启动（否则守护进程直接挂掉），但必须留下日志，
+    // 否则用户只会看到"调频参数不对"却不知道是配置坏了。
+    let (config, config_error) = Config::from_file_or_default(config_path.to_str().unwrap_or_default());
+    if let Some(error) = config_error {
+        log::error!("{}", t_with_args("config-load-failed", &fluent_args!(
+            "path" => config_path.display().to_string(),
+            "error" => error.to_string()
+        )));
+    }
 
     let shared_config = Arc::new(RwLock::new(config));
     let shared_mode_name = Arc::new(Mutex::new("balance".to_string())); 
@@ -138,7 +147,7 @@ pub fn start_scheduler_thread(rx: mpsc::Receiver<DaemonEvent>) -> Result<()> {
 
                 let old_lang = config_clone.read().unwrap().meta.language.clone();
                 
-                match Config::from_file(config_path.to_str().unwrap()) {
+                match Config::from_file(config_path.to_str().unwrap_or_default()) {
                     Ok(new_config) => {
                         logger::update_level(&new_config.meta.loglevel);
                         *config_clone.write().unwrap() = new_config;
@@ -167,7 +176,7 @@ pub fn start_scheduler_thread(rx: mpsc::Receiver<DaemonEvent>) -> Result<()> {
     let config_clone = shared_config.clone();
     let mode_clone = shared_mode_name.clone();
 
-    thread::Builder::new()
+    let scheduler_thread = thread::Builder::new()
         .name("scheduler_ipc".to_string())
         .spawn(move || {
             log::info!("{}", t("scheduler-ipc-started"));
@@ -202,6 +211,12 @@ pub fn start_scheduler_thread(rx: mpsc::Receiver<DaemonEvent>) -> Result<()> {
             // message, so either an idle channel or a busy one can release control.
             let loop_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 loop {
+                    // 收到 SIGTERM / SIGINT 时主动退出：监控线程仍可能持有发送端，
+                    // 只靠通道断开检测会等不到退出机会
+                    if common::shutdown_requested() {
+                        log::info!("{}", t("scheduler-shutdown-signal"));
+                        break;
+                    }
                     let message = match rx.recv_timeout(std::time::Duration::from_millis(200)) {
                         Ok(message) => Some(message),
                         Err(mpsc::RecvTimeoutError::Timeout) => None,
@@ -346,7 +361,14 @@ pub fn start_scheduler_thread(rx: mpsc::Receiver<DaemonEvent>) -> Result<()> {
             cpu_governor.release();
             fas_controller.reset_all_freqs();
             fas_controller.clear_game();
+
+            // 全部恢复成功后基线快照就没用了；还有没恢复完的就留着，下次启动再试
+            if cpu_governor.restore_pending() || fas_controller.restore_pending() {
+                log::warn!("[Scheduler] CPU state restore incomplete; keeping baseline snapshot");
+            } else {
+                crate::scheduler::baseline::clear();
+            }
         })?;
 
-    Ok(())
+    Ok(scheduler_thread)
 }

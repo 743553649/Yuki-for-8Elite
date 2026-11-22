@@ -243,6 +243,25 @@ impl Config {
         Ok(config)
     }
 
+    /// 读取配置，失败时返回默认值与错误。
+    /// 默认值里语言/日志级别是空串（derive Default 不会走 serde 的 default），
+    /// 会让日志退化成 key 原文，所以这里补成合理值。
+    pub fn from_file_or_default(path: &str) -> (Self, Option<anyhow::Error>) {
+        match Self::from_file(path) {
+            Ok(config) => (config, None),
+            Err(error) => {
+                let mut config = Self::default();
+                if config.meta.language.trim().is_empty() {
+                    config.meta.language = "en".to_string();
+                }
+                if config.meta.loglevel.trim().is_empty() {
+                    config.meta.loglevel = "INFO".to_string();
+                }
+                (config, Some(error))
+            }
+        }
+    }
+
     pub fn get_mode(&self, mode_name: &str) -> Option<&Mode> {
         match mode_name {
             "powersave" => Some(&self.powersave),

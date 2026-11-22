@@ -18,6 +18,7 @@
 use crate::monitor::config::RulesConfig;
 use std::path::PathBuf;
 use std::env;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 /// 守护进程全局事件总线
 #[derive(Debug, Clone)]
@@ -49,6 +50,52 @@ pub enum DaemonEvent {
     ConfigReload(RulesConfig),
 
     ScreenStateChange(bool),
+}
+
+// ════════════════════════════════════════════════════════════════
+//  退出信号
+// ════════════════════════════════════════════════════════════════
+
+/// 收到 SIGTERM / SIGINT 后置位；各循环检查它来决定何时退出。
+/// 用普通原子量而不是 channel：信号处理函数里不能做 IO、不能加锁。
+static SHUTDOWN_REQUESTED: AtomicBool = AtomicBool::new(false);
+
+/// 信号处理函数：只置标志，真正的恢复动作留给主循环
+extern "C" fn handle_shutdown_signal(_signal: libc::c_int) {
+    SHUTDOWN_REQUESTED.store(true, Ordering::Relaxed);
+}
+
+/// 安装 SIGTERM / SIGINT 处理。
+/// 用 sigaction 而不是 signal()：SA_RESTART 避免打断 inotify 等阻塞调用。
+pub fn install_signal_handlers() -> std::io::Result<()> {
+    unsafe {
+        let mut action: libc::sigaction = std::mem::zeroed();
+        action.sa_sigaction = handle_shutdown_signal as *const () as usize;
+        action.sa_flags = libc::SA_RESTART;
+        libc::sigemptyset(&mut action.sa_mask);
+        for signal in [libc::SIGTERM, libc::SIGINT] {
+            if libc::sigaction(signal, &action, std::ptr::null_mut()) != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+        }
+    }
+    Ok(())
+}
+
+pub fn shutdown_requested() -> bool {
+    SHUTDOWN_REQUESTED.load(Ordering::Relaxed)
+}
+
+/// 可被退出信号打断的睡眠：长退避期间也能在 200ms 内响应停止请求
+pub fn sleep_interruptible(duration: std::time::Duration) {
+    let deadline = std::time::Instant::now() + duration;
+    while !shutdown_requested() {
+        let now = std::time::Instant::now();
+        if now >= deadline {
+            break;
+        }
+        std::thread::sleep((deadline - now).min(std::time::Duration::from_millis(200)));
+    }
 }
 
 /// 获取模块根目录的绝对路径

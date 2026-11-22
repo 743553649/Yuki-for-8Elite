@@ -16,6 +16,7 @@
  */
 
 use crate::fas_types::{FasRulesConfig, ClusterProfile};
+use crate::scheduler::baseline::{self, PolicyBaseline};
 use crate::scheduler::cpufreq::PolicyFrequency;
 use std::fs;
 use std::time::{Duration, Instant};
@@ -143,6 +144,8 @@ impl FasController {
         }
 
         self.temp_threshold = new_rules.core_temp_threshold;
+        // 阈值热重载后按当前温度重新判断封顶状态
+        self.update_temp_throttle();
         self.refresh_cached_values();
         if limits_changed {
             for policy in &mut self.policies {
@@ -189,6 +192,11 @@ impl FasController {
             }
         }
 
+        // 温度封顶：超过阈值时把 perf 压到配置的上限（默认阈值 0 = 关闭，行为不变）
+        if self.temp_throttle_active {
+            effective_perf = effective_perf.min(self.cfg.core_temp_throttle_perf.clamp(0.0, 1.0));
+        }
+
         for policy in &mut self.policies {
             if verify && !policy.pending {
                 policy.frequency.verify_limits();
@@ -228,12 +236,13 @@ impl FasController {
         }
         self.fps_margin = fas_rules.fps_margin;
 
+        // 先把 perfmgr 的原始值读出来（暂不写 0），和 CPU 基线一起落盘
+        let mut perfmgr_snapshot: Vec<(String, String)> = Vec::new();
         for path in ["/sys/module/perfmgr/parameters/perfmgr_enable",
             "/sys/module/mtk_fpsgo/parameters/perfmgr_enable"] {
             if !self.saved_perfmgr.iter().any(|(saved, _)| saved == path) {
                 if let Ok(value) = fs::read_to_string(path) {
-                    self.saved_perfmgr.push((path.to_string(), value));
-                    let _ = crate::utils::write_to_file(path, "0");
+                    perfmgr_snapshot.push((path.to_string(), value.trim().to_string()));
                 }
             }
         }
@@ -255,9 +264,31 @@ impl FasController {
             })
         } else { None };
 
+        // 同样先只读打开，落盘基线后才切换 governor / 写 perfmgr
+        let mut opened: Vec<(usize, i32, PolicyFrequency)> = Vec::new();
         for (idx, policy) in clusters.iter().enumerate() {
-            let pid = policy.id;
-            let Some(mut frequency) = PolicyFrequency::open(policy) else { continue; };
+            if let Some(frequency) = PolicyFrequency::open(policy) {
+                opened.push((idx, policy.id, frequency));
+            }
+        }
+
+        if !opened.is_empty() {
+            let baselines: Vec<PolicyBaseline> = opened.iter().map(|(_, id, frequency)| PolicyBaseline {
+                id: *id,
+                governor: frequency.original_governor().to_string(),
+                min: frequency.original_range().min,
+                max: frequency.original_range().max,
+            }).collect();
+            // 基线先落盘再动 perfmgr：落盘失败时不动它，避免异常退出后无从恢复
+            if baseline::ensure(&baselines, &perfmgr_snapshot) {
+                for (path, value) in &perfmgr_snapshot {
+                    self.saved_perfmgr.push((path.clone(), value.clone()));
+                    let _ = crate::utils::write_to_file(path, "0");
+                }
+            }
+        }
+
+        for (idx, pid, mut frequency) in opened {
             frequency.select_governor(fas_rules.governor.as_deref());
             let available = frequency.available_range();
 
@@ -283,6 +314,9 @@ impl FasController {
         self.limits_checked_at = self.init_time;
         self.perf_index = self.cfg.perf_cold_boot;
         self.temp_threshold = fas_rules.core_temp_threshold;
+        // 新会话从"未封顶"开始，首次 set_temperature 会按实际温度重新判定
+        self.temp_throttle_active = false;
+        self.temp_hot_samples = 0;
         self.apply_freqs();
 
         if self.policies.is_empty() {

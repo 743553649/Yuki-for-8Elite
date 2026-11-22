@@ -73,7 +73,8 @@ impl FasController {
             self.perf_index += inc * jank_scale * streak_m;
             act = "crit";
             self.consecutive_normal_frames = 0;
-            self.jank_cooldown = scale_frames(self.cfg.jank_cooldown_frames * 3, self.current_target_fps);
+            // 配置异常大时避免 u32 乘法在 debug 构建 panic / release 回绕
+            self.jank_cooldown = scale_frames(self.cfg.jank_cooldown_frames.saturating_mul(3), self.current_target_fps);
             // 紧急避险：Jank 发生时立刻重置 util 偏移，
             // 恢复严格的 target_fps 目标，避免 PID 在团战突发时还在"偷懒"
             self.target_fps_offset = 0.0;

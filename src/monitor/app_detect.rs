@@ -193,12 +193,31 @@ pub fn watch_config_file(
     let mut inotify = Inotify::init()?;
     let rules_path = config::get_rules_path();
     if !rules_path.exists() { let _ = utils::try_write_file(&rules_path, ""); }
-    inotify.watches().add(&rules_path, WatchMask::MODIFY | WatchMask::CLOSE_WRITE)?;
+
+    // 监听所在目录而不是文件本身：编辑器和文件管理器常用"写临时文件再改名"保存，
+    // 改名后旧 inode 上的监视就再也收不到事件。目录监视同时覆盖直接写入与原子替换。
+    let watch_dir = rules_path
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+    let rules_name = rules_path.file_name().map(|name| name.to_owned());
+    inotify.watches().add(
+        &watch_dir,
+        WatchMask::MODIFY | WatchMask::CLOSE_WRITE | WatchMask::CREATE | WatchMask::MOVED_TO,
+    )?;
     info!("{}", t_with_args("app-detect-config-watch", &fluent_args!("path" => format!("{:?}", rules_path))));
-    let mut buffer = [0u8; 1024];
+    let mut buffer = [0u8; 4096];
     loop {
-        let events = inotify.read_events_blocking(&mut buffer)?;
-        if events.peekable().peek().is_some() {
+        // 目录里其他文件（current_mode.txt、快照等）也会产生事件，只认 rules.yaml
+        let mut relevant = false;
+        for event in inotify.read_events_blocking(&mut buffer)? {
+            match event.name {
+                Some(name) if Some(name) == rules_name.as_deref() => relevant = true,
+                None => relevant = true,
+                _ => {}
+            }
+        }
+        if relevant {
             info!("{}", t("app-detect-change-detected"));
             thread::sleep(Duration::from_millis(100));
             while let Ok(events) = inotify.read_events(&mut buffer) { if events.peekable().peek().is_none() { break; } }
@@ -241,6 +260,11 @@ pub fn app_detection_loop(
     let mut debounce_start = Instant::now();
     
     loop {
+        if crate::common::shutdown_requested() {
+            info!("[AppDetect] Shutdown requested, leaving detection loop");
+            return Ok(());
+        }
+
         let force_refresh = force_refresh_arc.swap(false, Ordering::SeqCst);
         let current_screen_state = { *screen_state_arc.lock().unwrap() };
         

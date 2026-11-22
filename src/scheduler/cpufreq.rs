@@ -134,6 +134,16 @@ impl PolicyFrequency {
         })
     }
 
+    /// 接管前快照到的原始 governor，供基线落盘使用
+    pub fn original_governor(&self) -> &str {
+        &self.original_governor
+    }
+
+    /// 接管前快照到的原始频率区间，供基线落盘使用
+    pub fn original_range(&self) -> FrequencyRange {
+        self.original
+    }
+
     pub fn available_range(&self) -> FrequencyRange {
         FrequencyRange {
             min: self.frequencies[0],

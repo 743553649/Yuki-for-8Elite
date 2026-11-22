@@ -60,11 +60,16 @@ pub fn enable_perm <P: AsRef<Path>>(path: P) -> Result<()> {
     Ok(())
 }
 
-/// 监控指定路径的文件/目录事件
+/// 监控指定目录的写入事件。
+/// 除直接关闭写入外，也监听 CREATE / MOVED_TO：编辑器"写临时文件再改名"保存时
+/// 只会产生改名事件，只监听 CLOSE_WRITE 会漏掉整次修改。
 pub fn watch_path<P: AsRef<Path>>(path_to_watch: P) -> Result<()> {
     let mut inotify = Inotify::init()?;
-    inotify.watches().add(path_to_watch, WatchMask::CLOSE_WRITE)?;
-    
+    inotify.watches().add(
+        path_to_watch,
+        WatchMask::CLOSE_WRITE | WatchMask::CREATE | WatchMask::MOVED_TO,
+    )?;
+
     let mut buffer = [0u8; 1024];
     inotify.read_events_blocking(&mut buffer)?;
     Ok(())
@@ -110,7 +115,10 @@ pub fn find_cpu_temp_path() -> Result<String> {
                             
                             let temp_path = path.join("temp");
                             if temp_path.exists() {
-                                return Ok(temp_path.to_str().unwrap().to_string());
+                                // 路径含非 UTF-8 字节时跳过，而不是 panic
+                                if let Some(path_str) = temp_path.to_str() {
+                                    return Ok(path_str.to_string());
+                                }
                             }
                         }
                     }

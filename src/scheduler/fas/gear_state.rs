@@ -220,7 +220,9 @@ impl FasController {
                     } else { self.consecutive_downgrade_count = 1; }
                     self.last_downgrade_from_fps = old_fps;
                     let backoff = 1u32 << self.consecutive_downgrade_count.min(4);
-                    self.upgrade_cooldown = self.cfg.upgrade_cooldown_after_downgrade * backoff;
+                    // 连续降档时 backoff 最大 16，极端配置下用饱和乘法防止回绕
+                    self.upgrade_cooldown =
+                        self.cfg.upgrade_cooldown_after_downgrade.saturating_mul(backoff);
                     self.stable_gear_frames = 0;
                     return GearDecision::Downgrade {
                         target: prev, perf: self.perf_index,

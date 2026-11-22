@@ -27,6 +27,39 @@ use super::fps_window::FpsWindow;
 use super::pid::{PidController, fps_norm};
 use super::policy_controller::PolicyController;
 
+/// 温度回差：降到 阈值 - 2℃ 以下才解除封顶，防止在阈值附近反复开关
+const TEMP_RELEASE_HYSTERESIS: f64 = 2.0;
+
+/// 连续多少次超阈值才真正封顶。
+/// 开机瞬间等场景可能出现单次异常读数（实测见过 98.8℃），不能因此误降频。
+const TEMP_CONFIRM_SAMPLES: u32 = 2;
+
+/// 计算下一次温度封顶状态，返回 (是否封顶, 连续超阈值样本数)。
+/// - 阈值 <= 0：功能关闭
+/// - 温度读不到（0 或负数）：保持现状，不能因为传感器掉线就撤掉保护
+/// - 开启：需要连续 TEMP_CONFIRM_SAMPLES 次 temp >= 阈值
+/// - 解除：temp <= 阈值 - 回差，立即生效（保护优先）
+fn temp_throttle_next(temp: f64, threshold: f64, active: bool, hot_samples: u32) -> (bool, u32) {
+    if !(threshold > 0.0) {
+        return (false, 0);
+    }
+    if !(temp > 0.0) {
+        return (active, hot_samples);
+    }
+    if active {
+        if temp <= threshold - TEMP_RELEASE_HYSTERESIS {
+            (false, 0)
+        } else {
+            (true, hot_samples)
+        }
+    } else if temp >= threshold {
+        let samples = hot_samples.saturating_add(1);
+        (samples >= TEMP_CONFIRM_SAMPLES, samples)
+    } else {
+        (false, 0)
+    }
+}
+
 // ════════════════════════════════════════════════════════════════
 //  FasController — 主控制器
 //
@@ -92,6 +125,10 @@ pub struct FasController {
     // 温度感知
     pub(super) current_temperature: f64,
     pub(super) temp_threshold: f64,
+    /// 是否处于温度封顶状态（带回差，避免阈值附近来回抖动）
+    pub(super) temp_throttle_active: bool,
+    /// 连续超阈值的采样次数，用于过滤单次异常读数
+    pub(super) temp_hot_samples: u32,
 
     // [新] CPU 负载数据 — 由 SystemLoadUpdate 事件更新
     pub(super) foreground_max_util: f32,
@@ -168,6 +205,8 @@ impl FasController {
             cached_ema_budget: 17.54,
             current_temperature: 0.0,
             temp_threshold: 0.0,
+            temp_throttle_active: false,
+            temp_hot_samples: 0,
             foreground_max_util: 0.0,
             core_utils: Vec::new(),
             current_package: String::new(),
@@ -336,8 +375,60 @@ impl FasController {
         self.fps_gears = self.cfg.fps_gears.clone();
     }
 
-    pub fn set_temperature(&mut self, temp: f64) { self.current_temperature = temp; }
-    pub fn set_temp_threshold(&mut self, thresh: f64) { self.temp_threshold = thresh; }
+    pub fn set_temperature(&mut self, temp: f64) {
+        self.current_temperature = temp;
+        self.update_temp_throttle();
+    }
+
+    pub fn set_temp_threshold(&mut self, thresh: f64) {
+        self.temp_threshold = thresh;
+        // 阈值改成 0 表示关闭功能：立即解除封顶
+        if !(thresh > 0.0) {
+            self.temp_hot_samples = 0;
+            if self.temp_throttle_active {
+                self.temp_throttle_active = false;
+                self.force_reapply();
+            }
+            return;
+        }
+        self.update_temp_throttle();
+    }
+
+    /// 温度封顶状态机：达到阈值开始封顶，回落到阈值以下 2℃ 才解除。
+    /// 回差是为了避免温度在阈值附近波动时反复切换档位。
+    pub(super) fn update_temp_throttle(&mut self) {
+        let (active, samples) = temp_throttle_next(
+            self.current_temperature,
+            self.temp_threshold,
+            self.temp_throttle_active,
+            self.temp_hot_samples,
+        );
+        self.temp_hot_samples = samples;
+        if active == self.temp_throttle_active {
+            return;
+        }
+        self.temp_throttle_active = active;
+        if active {
+            info!("{}", t_with_args("fas-temp-throttle-on", &fluent_args!(
+                "temp" => format!("{:.0}", self.current_temperature),
+                "threshold" => format!("{:.0}", self.temp_threshold),
+                "perf" => format!("{:.2}", self.cfg.core_temp_throttle_perf)
+            )));
+        } else {
+            info!("{}", t_with_args("fas-temp-throttle-off", &fluent_args!(
+                "temp" => format!("{:.0}", self.current_temperature)
+            )));
+        }
+        // 封顶切换要立刻生效，不能等下一帧（帧可能已经停了）
+        self.force_reapply();
+    }
+
+    fn force_reapply(&mut self) {
+        for policy in &mut self.policies {
+            policy.pending = true;
+        }
+        self.apply_freqs();
+    }
 
     pub(super) fn reset_runtime(&mut self) {
         let floor = self.effective_perf_floor();
@@ -373,5 +464,48 @@ impl FasController {
         self.post_jank_guard_frames = 0;
         self.target_fps_offset = 0.0;
         self.util_sample_timer = Instant::now();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{temp_throttle_next, TEMP_CONFIRM_SAMPLES, TEMP_RELEASE_HYSTERESIS};
+
+    #[test]
+    fn temp_throttle_requires_consecutive_hot_samples() {
+        let threshold = 45.0;
+        // 单次超阈值只计数，不封顶
+        let (active, samples) = temp_throttle_next(45.0, threshold, false, 0);
+        assert!(!active);
+        assert_eq!(samples, 1);
+        // 连续第二次才封顶
+        let (active, samples) = temp_throttle_next(46.0, threshold, false, samples);
+        assert!(active);
+        assert_eq!(samples, TEMP_CONFIRM_SAMPLES);
+        // 中途回落会清零，单次尖峰不会累积
+        let (active, samples) = temp_throttle_next(44.9, threshold, false, 1);
+        assert!(!active);
+        assert_eq!(samples, 0);
+    }
+
+    #[test]
+    fn temp_throttle_releases_immediately_with_hysteresis() {
+        let threshold = 45.0;
+        // 回差内保持封顶
+        assert!(temp_throttle_next(threshold - 1.0, threshold, true, 2).0);
+        // 降到 阈值 - 回差 才解除，且立即生效
+        let (active, samples) =
+            temp_throttle_next(threshold - TEMP_RELEASE_HYSTERESIS, threshold, true, 2);
+        assert!(!active);
+        assert_eq!(samples, 0);
+    }
+
+    #[test]
+    fn temp_throttle_can_be_disabled_and_ignores_missing_sensor() {
+        // 阈值 0 = 关闭，即使温度很高也不封顶
+        assert!(!temp_throttle_next(80.0, 0.0, true, 5).0);
+        // 温度读不到时保持现状，不能因传感器掉线解除保护
+        assert_eq!(temp_throttle_next(0.0, 45.0, true, 2), (true, 2));
+        assert_eq!(temp_throttle_next(0.0, 45.0, false, 0), (false, 0));
     }
 }

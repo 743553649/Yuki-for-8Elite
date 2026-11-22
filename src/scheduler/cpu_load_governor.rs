@@ -17,6 +17,7 @@
 
 
 use crate::scheduler::config::CpuLoadGovernorConfig;
+use crate::scheduler::baseline::{self, PolicyBaseline};
 use super::cpufreq::{FrequencyRange, PolicyFrequency};
 use log::{info, debug, warn};
 use std::fs;
@@ -87,11 +88,27 @@ impl CpuLoadGovernor {
         self.cfg = gov_cfg.clone();
         self.normalize_cfg();
 
+        // 先只读地打开并快照所有 policy，再统一落盘基线，最后才写 governor/频率。
+        // 顺序不能反：基线写晚一步，进程恰好被强杀时原始值就已经丢失了。
+        let mut opened: Vec<(i32, Vec<usize>, u32, PolicyFrequency)> = Vec::new();
         for policy in &crate::scheduler::get_cpu_policies() {
             let pid = policy.id;
             let affected_cpus = Self::read_affected_cpus(pid);
             if affected_cpus.is_empty() { continue; }
-            let Some(mut frequency) = PolicyFrequency::open(policy) else { continue; };
+            let Some(frequency) = PolicyFrequency::open(policy) else { continue; };
+            let boost_max = policy.boost_frequencies.iter().copied().max().unwrap_or(0);
+            opened.push((pid, affected_cpus, boost_max, frequency));
+        }
+
+        let baselines: Vec<PolicyBaseline> = opened.iter().map(|(id, _, _, frequency)| PolicyBaseline {
+            id: *id,
+            governor: frequency.original_governor().to_string(),
+            min: frequency.original_range().min,
+            max: frequency.original_range().max,
+        }).collect();
+        baseline::ensure(&baselines, &[]);
+
+        for (pid, affected_cpus, boost_max, mut frequency) in opened {
             frequency.select_governor(self.cfg.governor.as_deref());
             let available = frequency.available_range();
 
@@ -99,7 +116,7 @@ impl CpuLoadGovernor {
             let mut cluster = ClusterState {
                 frequency,
                 affected_cpus,
-                boost_max: policy.boost_frequencies.iter().copied().max().unwrap_or(0),
+                boost_max,
                 current_perf: init_perf,
                 down_wait: 0,
                 up_wait: 0,

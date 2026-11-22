@@ -49,8 +49,11 @@ fn build_config(level: LevelFilter) -> Result<Config> {
     let log_path = root.join("logs/daemon.log");
     let archive_pattern = root.join("logs/daemon.{}.log");
 
+    let archive_pattern = archive_pattern
+        .to_str()
+        .ok_or_else(|| anyhow!("log archive path is not valid UTF-8: {archive_pattern:?}"))?;
     let roller = FixedWindowRoller::builder()
-        .build(archive_pattern.to_str().unwrap(), 3)?;
+        .build(archive_pattern, 3)?;
     let trigger = SizeTrigger::new(5 * 1024 * 1024); // 5MB
     let policy = CompoundPolicy::new(Box::new(trigger), Box::new(roller));
 

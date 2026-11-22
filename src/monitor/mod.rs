@@ -20,7 +20,10 @@ use std::thread;
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::Sender;
+use std::time::{Duration, Instant};
 use log::{error, info};
+
+use crate::common;
 
 pub mod config;
 pub mod app_detect;
@@ -98,29 +101,67 @@ pub fn start_monitor(tx: Sender<DaemonEvent>) -> Result<(), Box<dyn Error>> {
         })?;
 
     // 5. FPS worker owns its poll loop and reports initialization/runtime errors.
+    //    失败后按 1s → 2s → … → 30s 退避重试：一次热插拔或资源紧张不再让 FPS 监控永久停摆。
     let tx_fps = tx.clone();
     thread::Builder::new()
         .name("fps_monitor_ebpf".to_string())
         .spawn(move || {
-            if let Err(e) = fps_monitor::start_fps_loop(tx_fps.clone()) {
-                error!("{}", t_with_args("monitor-fps-crashed", &fluent_args!("error" => format!("{e:#}"))));
+            let mut backoff = Duration::from_secs(1);
+            loop {
+                if common::shutdown_requested() { break; }
+                let started = Instant::now();
+                match fps_monitor::start_fps_loop(tx_fps.clone()) {
+                    Ok(()) => break, // 通道关闭等正常退出
+                    Err(e) => {
+                        error!("{}", t_with_args("monitor-fps-crashed", &fluent_args!("error" => format!("{e:#}"))));
+                        // 立刻通知调度器释放频率，避免拿着失效数据继续调频
+                        let _ = tx_fps.send(DaemonEvent::FpsProbeUnavailable);
+                        // 上一轮稳定跑过 60 秒说明恢复有效，退避从 1 秒重新开始
+                        if started.elapsed() >= Duration::from_secs(60) {
+                            backoff = Duration::from_secs(1);
+                        }
+                        error!("{}", t_with_args("monitor-fps-retrying", &fluent_args!(
+                            "secs" => backoff.as_secs().to_string(),
+                            "error" => format!("{e:#}")
+                        )));
+                        common::sleep_interruptible(backoff);
+                        backoff = (backoff * 2).min(Duration::from_secs(30));
+                    }
+                }
             }
             let _ = tx_fps.send(DaemonEvent::FpsProbeUnavailable);
         })?;
 
-    // 6. 启动 eBPF CPU 负载监控线程
+    // 6. 启动 eBPF CPU 负载监控线程（同样失败退避重试）
     let tx_cpu = tx.clone();
     thread::Builder::new()
         .name("cpu_monitor_ebpf".to_string())
         .spawn(move || {
-            if let Ok(rt) = tokio::runtime::Runtime::new() {
-                rt.block_on(async {
-                    if let Err(e) = cpu_monitor::start_cpu_loop(tx_cpu.clone()).await {
+            let mut backoff = Duration::from_secs(1);
+            loop {
+                if common::shutdown_requested() { break; }
+                let started = Instant::now();
+                let result: anyhow::Result<()> = (|| {
+                    let runtime = tokio::runtime::Runtime::new()
+                        .map_err(|e| anyhow::anyhow!("tokio runtime: {e}"))?;
+                    runtime.block_on(cpu_monitor::start_cpu_loop(tx_cpu.clone()))
+                })();
+                match result {
+                    Ok(()) => break,
+                    Err(e) => {
                         error!("{}", t_with_args("monitor-cpu-crashed", &fluent_args!("error" => format!("{e:#}"))));
+                        let _ = tx_cpu.send(DaemonEvent::CpuMonitorUnavailable);
+                        if started.elapsed() >= Duration::from_secs(60) {
+                            backoff = Duration::from_secs(1);
+                        }
+                        error!("{}", t_with_args("monitor-cpu-retrying", &fluent_args!(
+                            "secs" => backoff.as_secs().to_string(),
+                            "error" => format!("{e:#}")
+                        )));
+                        common::sleep_interruptible(backoff);
+                        backoff = (backoff * 2).min(Duration::from_secs(30));
                     }
-                });
-            } else {
-                error!("{}", t("monitor-cpu-tokio-failed"));
+                }
             }
             let _ = tx_cpu.send(DaemonEvent::CpuMonitorUnavailable);
         })?;
