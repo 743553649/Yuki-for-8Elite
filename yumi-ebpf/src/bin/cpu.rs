@@ -129,5 +129,9 @@ fn update_percpu<T: Copy>(map: &PerCpuArray<T>, key: &u32, val: &T) {
 
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
-    unsafe { core::hint::unreachable_unchecked() }
+    // BPF 程序里没有可靠的"终止"手段：以前用 unreachable_unchecked，
+    // 一旦真的触发就是未定义行为。循环等待更安全，也让 verifier 看到确定的控制流。
+    loop {
+        core::hint::spin_loop();
+    }
 }
