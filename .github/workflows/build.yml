@@ -71,6 +71,11 @@ jobs:
         working-directory: ./webui
         run: npm install
 
+      # 4.5 WebUI 类型检查：只构建不检查会漏掉类型错误
+      - name: Type-check WebUI
+        working-directory: ./webui
+        run: npm run type-check
+
       # 5. 配置 Rust Nightly 环境并添加 Android 交叉编译目标
       - name: Setup Rust Toolchain
         uses: dtolnay/rust-toolchain@nightly
