@@ -1,4 +1,16 @@
 #!/system/bin/sh
+#
+# ⚠️ 高风险脚本：本脚本会关闭内核与系统的温控/热限频保护
+#    （thermal_mitigation=0、解除 thermal_message 温度限制等）。
+# 高温环境下关闭保护可能导致降频失效、发热失控，甚至硬件损伤。
+# 因此默认拒绝执行；确认理解风险并仍要继续时，显式带上开关：
+#   YUMI_ALLOW_THERMAL_DISABLE=1 sh disable_boost.sh
+#
+if [ "${YUMI_ALLOW_THERMAL_DISABLE:-0}" != "1" ]; then
+    echo "已拒绝执行：disable_boost.sh 会关闭温控保护。"
+    echo "如确认风险并要继续：YUMI_ALLOW_THERMAL_DISABLE=1 sh $0"
+    exit 1
+fi
 
 write_value() {
     local path_pattern="$1"
