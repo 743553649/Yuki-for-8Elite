@@ -2,7 +2,7 @@
 meta:
   name: "default_config"
   author: "yuki"
-  language: "en"
+  language: "zh"
   loglevel: "INFO"
 
 # 主要功能开关

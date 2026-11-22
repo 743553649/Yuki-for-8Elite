@@ -27,7 +27,8 @@ pub struct Meta {
 }
 
 fn default_loglevel() -> String { "INFO".to_string() }
-fn default_language() -> String { "en".to_string() }
+// 默认日志语言：模块面向中文用户，缺省用中文；配置里显式写 "en" 仍可切换
+fn default_language() -> String { "zh".to_string() }
 
 // ════════════════════════════════════════════════════════════════
 //  CPU Load Governor 配置
@@ -252,7 +253,7 @@ impl Config {
             Err(error) => {
                 let mut config = Self::default();
                 if config.meta.language.trim().is_empty() {
-                    config.meta.language = "en".to_string();
+                    config.meta.language = "zh".to_string();
                 }
                 if config.meta.loglevel.trim().is_empty() {
                     config.meta.loglevel = "INFO".to_string();
