@@ -3,7 +3,7 @@ import { ref, onMounted, h, defineComponent, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { Bridge } from '@/utils/bridge';
 // 1. 从 vant 中移除 showToast
-import { Collapse, CollapseItem, Cell, Switch, Icon, showConfirmDialog } from 'vant';
+import { CollapseItem, Cell, Switch, Icon, showConfirmDialog } from 'vant';
 // 2. 引入原生内核层的 toast
 import { toast } from '@/kernelsu';
 
@@ -23,7 +23,7 @@ const modeActions = computed(() => [
   { name: t('mode_powersave'), subname: t('desc_powersave'), color: '#4CAF50', modeKey: 'powersave' },
   { name: t('mode_balance'), subname: t('desc_balance'), color: '#2196F3', modeKey: 'balance' },
   { name: t('mode_performance'), subname: t('desc_performance'), color: '#FF9800', modeKey: 'performance' },
-  { name: t('mode_fast'), subname: t('desc_fast'), color: '#F44336', modeKey: 'fast' }
+  { name: t('mode_fast'), subname: t('desc_fast'), color: '#F44336', modeKey: 'fast' },
 ]);
 const appModeActions = computed(() => [
   { name: t('mode_powersave'), subname: t('desc_powersave'), color: '#4CAF50', modeKey: 'powersave' },
@@ -31,11 +31,11 @@ const appModeActions = computed(() => [
   { name: t('mode_performance'), subname: t('desc_performance'), color: '#FF9800', modeKey: 'performance' },
   { name: t('mode_fast'), subname: t('desc_fast'), color: '#F44336', modeKey: 'fast' },
   { name: t('mode_fas'), subname: t('desc_fas'), color: '#E91E63', modeKey: 'fas' },
-  { name: t('delete_rule'), color: '#FF0000', isDelete: true }
+  { name: t('delete_rule'), color: '#FF0000', isDelete: true },
 ]);
 const languageActions = computed(() => [
   { name: t('lang_zh'), langCode: 'zh' },
-  { name: t('lang_en'), langCode: 'en' }
+  { name: t('lang_en'), langCode: 'en' },
 ]);
 const loglevelActions = computed(() => [
   { name: t('loglevel_off'), level: 'OFF' },
@@ -43,7 +43,7 @@ const loglevelActions = computed(() => [
   { name: t('loglevel_warn'), level: 'WARN' },
   { name: t('loglevel_info'), level: 'INFO' },
   { name: t('loglevel_debug'), level: 'DEBUG' },
-  { name: t('loglevel_trace'), level: 'TRACE' }
+  { name: t('loglevel_trace'), level: 'TRACE' },
 ]);
 
 const showModeSheet = ref(false);
@@ -55,26 +55,28 @@ const governorLoading = ref(false);
 const governorNames = ref<string[]>([]);
 const governorActions = computed(() => [
   { name: t('governor_system'), governor: 'system' },
-  ...governorNames.value.map(governor => ({ name: governor, governor }))
+  ...governorNames.value.map((governor) => ({ name: governor, governor })),
 ]);
 
 const isObj = (v: any) => v && typeof v === 'object' && !Array.isArray(v);
-const isGovernorPath = (path: string) => path === 'fas_rules/governor'
-  || /^(powersave|balance|performance|fast)\/(cpu_load_governor|CpuLoadGovernor)\/governor$/.test(path);
+const isGovernorPath = (path: string) =>
+  path === 'fas_rules/governor' ||
+  /^(powersave|balance|performance|fast)\/(cpu_load_governor|CpuLoadGovernor)\/governor$/.test(path);
 
 const isFrequencyStepsPath = (path: string) => path.endsWith('/freq_range_steps_below');
 const isFrequencySteps = (value: unknown): value is number =>
   typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 0xffffffff;
 const editingFrequencySteps = computed(() => isFrequencyStepsPath(editingKeyPath.value));
-const validFrequencySteps = computed(() => /^\d+$/.test(editingValue.value)
-  && isFrequencySteps(Number(editingValue.value)));
+const validFrequencySteps = computed(
+  () => /^\d+$/.test(editingValue.value) && isFrequencySteps(Number(editingValue.value)),
+);
 
 const withFrequencySettings = (config: any, defaultSteps: number) => ({
   ...config,
   governor: typeof config?.governor === 'string' ? config.governor.trim() || 'system' : 'system',
   freq_range_steps_below: isFrequencySteps(config?.freq_range_steps_below)
     ? config.freq_range_steps_below
-    : defaultSteps
+    : defaultSteps,
 });
 
 const displayedData = computed(() => {
@@ -98,11 +100,13 @@ const openGovernorSheet = async () => {
   try {
     const policies = await Bridge.getCpuPolicies();
     const [first = [], ...otherPolicies] = await Promise.all(
-      policies.map(policy => Bridge.getAvailableGovernors(policy))
+      policies.map((policy) => Bridge.getAvailableGovernors(policy)),
     );
     governorNames.value = [...new Set(first)]
-      .filter(name => name !== 'system' && /^[a-zA-Z0-9_-]+$/.test(name)
-        && otherPolicies.every(names => names.includes(name)))
+      .filter(
+        (name) =>
+          name !== 'system' && /^[a-zA-Z0-9_-]+$/.test(name) && otherPolicies.every((names) => names.includes(name)),
+      )
       .sort();
   } finally {
     governorLoading.value = false;
@@ -132,9 +136,7 @@ const loadData = async () => {
   dataReady.value = false;
   currentData.value = {};
   try {
-    currentData.value = activeTab.value === 'rules'
-      ? await Bridge.getRulesConfig()
-      : await Bridge.getMainConfig();
+    currentData.value = activeTab.value === 'rules' ? await Bridge.getRulesConfig() : await Bridge.getMainConfig();
     activeNames.value = collectExpandPaths(displayedData.value, '');
     dataReady.value = true;
   } catch (e) {
@@ -180,29 +182,47 @@ const handleItemClick = (fullPath: string, value: any) => {
 
   editingKeyPath.value = fullPath;
 
-  if (fullPath === 'global_mode') { showModeSheet.value = true; return; }
-  if (fullPath.startsWith('app_modes/')) { showAppModeSheet.value = true; return; }
-  if (fullPath === 'meta/language') { showLanguageSheet.value = true; return; }
-  if (fullPath === 'meta/loglevel') { showLoglevelSheet.value = true; return; }
-  if (isGovernorPath(fullPath)) { void openGovernorSheet(); return; }
+  if (fullPath === 'global_mode') {
+    showModeSheet.value = true;
+    return;
+  }
+  if (fullPath.startsWith('app_modes/')) {
+    showAppModeSheet.value = true;
+    return;
+  }
+  if (fullPath === 'meta/language') {
+    showLanguageSheet.value = true;
+    return;
+  }
+  if (fullPath === 'meta/loglevel') {
+    showLoglevelSheet.value = true;
+    return;
+  }
+  if (isGovernorPath(fullPath)) {
+    void openGovernorSheet();
+    return;
+  }
 
-  const isArrayField = Array.isArray(value) || fullPath === 'ignored_apps' || fullPath.endsWith('fps_gears') || fullPath.endsWith('target_fps') || fullPath.endsWith('cluster_profiles');
+  const isArrayField =
+    Array.isArray(value) ||
+    fullPath === 'ignored_apps' ||
+    fullPath.endsWith('fps_gears') ||
+    fullPath.endsWith('target_fps') ||
+    fullPath.endsWith('cluster_profiles');
 
-  if (isArrayField) { 
-    editingType.value = 'array'; 
+  if (isArrayField) {
+    editingType.value = 'array';
     if (fullPath.endsWith('cluster_profiles') && Array.isArray(value)) {
       editingValue.value = value.map((v: any) => v.capacity_weight ?? 1.0).join(', ');
     } else {
-      editingValue.value = Array.isArray(value) ? value.join(', ') : ''; 
+      editingValue.value = Array.isArray(value) ? value.join(', ') : '';
     }
-  }
-  else if (typeof value === 'number') { 
-    editingType.value = 'number'; 
-    editingValue.value = String(value); 
-  }
-  else { 
-    editingType.value = 'string'; 
-    editingValue.value = String(value); 
+  } else if (typeof value === 'number') {
+    editingType.value = 'number';
+    editingValue.value = String(value);
+  } else {
+    editingType.value = 'string';
+    editingValue.value = String(value);
   }
   showEditDialog.value = true;
 };
@@ -211,14 +231,20 @@ const confirmEdit = () => {
   if (editingFrequencySteps.value && !validFrequencySteps.value) return;
   let val: any = editingValue.value;
   if (editingType.value === 'number') val = Number(val);
-  
+
   if (editingType.value === 'array') {
-    const strArray = val.split(',').map((s: string) => s.trim()).filter((s: string) => s !== '');
-    
+    const strArray = val
+      .split(',')
+      .map((s: string) => s.trim())
+      .filter((s: string) => s !== '');
+
     if (editingKeyPath.value.includes('fps')) {
       val = strArray.map(Number).filter((n: number) => !isNaN(n));
     } else if (editingKeyPath.value.endsWith('cluster_profiles')) {
-      val = strArray.map(Number).filter((n: number) => !isNaN(n)).map((n: number) => ({ capacity_weight: n }));
+      val = strArray
+        .map(Number)
+        .filter((n: number) => !isNaN(n))
+        .map((n: number) => ({ capacity_weight: n }));
     } else {
       val = strArray;
     }
@@ -228,15 +254,28 @@ const confirmEdit = () => {
   showEditDialog.value = false;
 };
 
-const onSelectMode = (a: any) => { currentData.value.global_mode = a.modeKey; saveConfig(); showModeSheet.value = false; };
+const onSelectMode = (a: any) => {
+  currentData.value.global_mode = a.modeKey;
+  saveConfig();
+  showModeSheet.value = false;
+};
 const onSelectAppMode = (a: any) => {
   const pkg = editingKeyPath.value.split('/').pop() || '';
   if (a.isDelete) delete currentData.value.app_modes[pkg];
   else currentData.value.app_modes[pkg] = a.modeKey;
-  saveConfig(); showAppModeSheet.value = false;
+  saveConfig();
+  showAppModeSheet.value = false;
 };
-const onSelectLanguage = (a: any) => { setDeepValue(currentData.value, 'meta/language', a.langCode); saveConfig(); showLanguageSheet.value = false; };
-const onSelectLoglevel = (a: any) => { setDeepValue(currentData.value, 'meta/loglevel', a.level); saveConfig(); showLoglevelSheet.value = false; };
+const onSelectLanguage = (a: any) => {
+  setDeepValue(currentData.value, 'meta/language', a.langCode);
+  saveConfig();
+  showLanguageSheet.value = false;
+};
+const onSelectLoglevel = (a: any) => {
+  setDeepValue(currentData.value, 'meta/loglevel', a.level);
+  saveConfig();
+  showLoglevelSheet.value = false;
+};
 const onSelectGovernor = (action: { governor: string }) => {
   setDeepValue(currentData.value, editingKeyPath.value, action.governor);
   showGovernorSheet.value = false;
@@ -253,78 +292,95 @@ const RecursiveItem = defineComponent({
         const isPerAppProfileNode = pathParts.length >= 2 && pathParts[pathParts.length - 2] === 'per_app_profiles';
 
         const children = Object.entries(props.value).map(([subKey, subVal]) =>
-          h(RecursiveItem, { key: subKey, name: subKey, value: subVal, path: `${props.path}/${subKey}` })
+          h(RecursiveItem, { key: subKey, name: subKey, value: subVal, path: `${props.path}/${subKey}` }),
         );
 
         const collapseProps: any = { title: props.name, name: props.path, class: 'nested-group' };
         const slots: any = { default: () => children };
 
         if (isPerAppProfileNode) {
-          slots.value = () => h('div', {
-            onClick: (e: Event) => e.stopPropagation()
-          }, [
-            h(Icon, {
-              name: 'delete-o',
-              color: '#ee0a24',
-              size: '18',
-              style: { padding: '4px', cursor: 'pointer' },
-              onClick: () => {
-                showConfirmDialog({
-                  title: t('confirm_delete_title'),
-                  message: t('confirm_delete_message', { name: props.name }),
-                  confirmButtonColor: '#ee0a24'
-                }).then(() => {
-                  const keys = props.path.split('/');
-                  const targetKey = keys.pop() as string;
-                  let obj = currentData.value;
-                  for (const k of keys) obj = obj[k];
-                  delete obj[targetKey];
-                  saveConfig();
-                }).catch(() => {});
-              }
-            })
-          ]);
+          slots.value = () =>
+            h(
+              'div',
+              {
+                onClick: (e: Event) => e.stopPropagation(),
+              },
+              [
+                h(Icon, {
+                  name: 'delete-o',
+                  color: '#ee0a24',
+                  size: '18',
+                  style: { padding: '4px', cursor: 'pointer' },
+                  onClick: () => {
+                    showConfirmDialog({
+                      title: t('confirm_delete_title'),
+                      message: t('confirm_delete_message', { name: props.name }),
+                      confirmButtonColor: '#ee0a24',
+                    })
+                      .then(() => {
+                        const keys = props.path.split('/');
+                        const targetKey = keys.pop() as string;
+                        let obj = currentData.value;
+                        for (const k of keys) obj = obj[k];
+                        delete obj[targetKey];
+                        saveConfig();
+                      })
+                      .catch(() => {});
+                  },
+                }),
+              ],
+            );
         }
 
         return h(CollapseItem, collapseProps, slots);
       }
 
       const governor = isGovernorPath(props.path);
-      return h(Cell, {
-        title: governor ? t('cpu_governor')
-          : isFrequencyStepsPath(props.path) ? t('freq_range_steps_below') : props.name,
-        center: true,
-        isLink: typeof props.value !== 'boolean',
-        onClick: () => handleItemClick(props.path, props.value)
-      }, {
-        value: () => {
-          if (typeof props.value === 'boolean') return null;
-          if (governor && props.value === 'system') {
-            return h('span', t('governor_system'));
-          }
-          let displayVal = '';
-          if (Array.isArray(props.value)) {
-            if (props.path.endsWith('cluster_profiles')) {
-              displayVal = `[${props.value.map((v: any) => v.capacity_weight ?? '?').join(', ')}]`;
-            } else {
-              displayVal = `[${props.value.join(', ')}]`;
-            }
-          } else {
-            displayVal = String(props.value);
-          }
-          return h('span', displayVal);
+      return h(
+        Cell,
+        {
+          title: governor
+            ? t('cpu_governor')
+            : isFrequencyStepsPath(props.path)
+              ? t('freq_range_steps_below')
+              : props.name,
+          center: true,
+          isLink: typeof props.value !== 'boolean',
+          onClick: () => handleItemClick(props.path, props.value),
         },
-        'right-icon': () => typeof props.value === 'boolean' ? h(Switch, {
-          modelValue: props.value,
-          size: '20px',
-          'onUpdate:modelValue': (newVal: boolean) => {
-            setDeepValue(currentData.value, props.path, newVal);
-            saveConfig();
-          }
-        }) : null
-      });
+        {
+          value: () => {
+            if (typeof props.value === 'boolean') return null;
+            if (governor && props.value === 'system') {
+              return h('span', t('governor_system'));
+            }
+            let displayVal: string;
+            if (Array.isArray(props.value)) {
+              if (props.path.endsWith('cluster_profiles')) {
+                displayVal = `[${props.value.map((v: any) => v.capacity_weight ?? '?').join(', ')}]`;
+              } else {
+                displayVal = `[${props.value.join(', ')}]`;
+              }
+            } else {
+              displayVal = String(props.value);
+            }
+            return h('span', displayVal);
+          },
+          'right-icon': () =>
+            typeof props.value === 'boolean'
+              ? h(Switch, {
+                  modelValue: props.value,
+                  size: '20px',
+                  'onUpdate:modelValue': (newVal: boolean) => {
+                    setDeepValue(currentData.value, props.path, newVal);
+                    saveConfig();
+                  },
+                })
+              : null,
+        },
+      );
     };
-  }
+  },
 });
 </script>
 
@@ -345,45 +401,125 @@ const RecursiveItem = defineComponent({
 
     <div v-else-if="dataReady" class="config-content">
       <van-collapse v-model="activeNames" :border="false">
-        <RecursiveItem v-for="(val, key) in displayedData" :key="key" :name="String(key)" :value="val" :path="String(key)" />
+        <RecursiveItem
+          v-for="(val, key) in displayedData"
+          :key="key"
+          :name="String(key)"
+          :value="val"
+          :path="String(key)"
+        />
       </van-collapse>
-      <div style="height: 60px;"></div>
+      <div style="height: 60px"></div>
     </div>
 
     <div v-else class="config-content">
       <p class="load-failed-hint">{{ t('load_failed') }}</p>
     </div>
 
-    <van-dialog v-model:show="showEditDialog" :title="editingFrequencySteps ? t('freq_range_steps_below') : t('edit')"
-      :confirm-button-disabled="editingFrequencySteps && !validFrequencySteps" show-cancel-button @confirm="confirmEdit">
+    <van-dialog
+      v-model:show="showEditDialog"
+      :title="editingFrequencySteps ? t('freq_range_steps_below') : t('edit')"
+      :confirm-button-disabled="editingFrequencySteps && !validFrequencySteps"
+      show-cancel-button
+      @confirm="confirmEdit"
+    >
       <div class="dialog-content">
-        <div class="path-hint">{{ editingFrequencySteps ? t('freq_range_steps_hint') : editingKeyPath.replace(/\//g, ' > ') }}</div>
-        <van-field v-model="editingValue" :type="editingType === 'number' ? 'number' : 'text'"
+        <div class="path-hint">
+          {{ editingFrequencySteps ? t('freq_range_steps_hint') : editingKeyPath.replace(/\//g, ' > ') }}
+        </div>
+        <van-field
+          v-model="editingValue"
+          :type="editingType === 'number' ? 'number' : 'text'"
           :error-message="editingFrequencySteps && !validFrequencySteps ? t('freq_range_steps_invalid') : undefined"
-          input-align="center" border autofocus />
+          input-align="center"
+          border
+          autofocus
+        />
       </div>
     </van-dialog>
 
-    <van-action-sheet v-model:show="showModeSheet" :actions="modeActions" :cancel-text="t('cancel')" @select="onSelectMode" />
-    <van-action-sheet v-model:show="showAppModeSheet" :actions="appModeActions" :cancel-text="t('cancel')" @select="onSelectAppMode" />
-    <van-action-sheet v-model:show="showLanguageSheet" :actions="languageActions" :cancel-text="t('cancel')" @select="onSelectLanguage" />
-    <van-action-sheet v-model:show="showLoglevelSheet" :actions="loglevelActions" :cancel-text="t('cancel')" @select="onSelectLoglevel" />
-    <van-action-sheet v-model:show="showGovernorSheet" :actions="governorActions" :title="t('cpu_governor')"
-      :description="governorLoading ? t('loading') : undefined" :cancel-text="t('cancel')" @select="onSelectGovernor" />
+    <van-action-sheet
+      v-model:show="showModeSheet"
+      :actions="modeActions"
+      :cancel-text="t('cancel')"
+      @select="onSelectMode"
+    />
+    <van-action-sheet
+      v-model:show="showAppModeSheet"
+      :actions="appModeActions"
+      :cancel-text="t('cancel')"
+      @select="onSelectAppMode"
+    />
+    <van-action-sheet
+      v-model:show="showLanguageSheet"
+      :actions="languageActions"
+      :cancel-text="t('cancel')"
+      @select="onSelectLanguage"
+    />
+    <van-action-sheet
+      v-model:show="showLoglevelSheet"
+      :actions="loglevelActions"
+      :cancel-text="t('cancel')"
+      @select="onSelectLoglevel"
+    />
+    <van-action-sheet
+      v-model:show="showGovernorSheet"
+      :actions="governorActions"
+      :title="t('cpu_governor')"
+      :description="governorLoading ? t('loading') : undefined"
+      :cancel-text="t('cancel')"
+      @select="onSelectGovernor"
+    />
   </div>
 </template>
 
 <style scoped>
 /* 样式保持不变 */
-.config-editor { min-height: 100vh; background: #f7f8fa; }
-.tab-container { padding: 12px 16px; background: #fff; margin-bottom: 8px; }
-.loading-center { padding-top: 100px; }
-.load-failed-hint { text-align: center; color: #969799; font-size: 14px; padding-top: 80px; }
-.config-content { padding: 0 12px; }
-.nested-group { margin-bottom: 4px; border-radius: 8px; overflow: hidden; }
-:deep(.van-collapse-item__content) { padding: 0 0 0 16px; background: #fafafa; }
-:deep(.van-cell) { margin-bottom: 1px; border-radius: 4px; }
-.dialog-content { padding: 20px 16px; }
-.path-hint { font-size: 11px; color: #999; text-align: center; margin-bottom: 12px; }
-:deep(.van-action-sheet__subname) { font-size: 11px; color: #999; }
+.config-editor {
+  min-height: 100vh;
+  background: #f7f8fa;
+}
+.tab-container {
+  padding: 12px 16px;
+  background: #fff;
+  margin-bottom: 8px;
+}
+.loading-center {
+  padding-top: 100px;
+}
+.load-failed-hint {
+  text-align: center;
+  color: #969799;
+  font-size: 14px;
+  padding-top: 80px;
+}
+.config-content {
+  padding: 0 12px;
+}
+.nested-group {
+  margin-bottom: 4px;
+  border-radius: 8px;
+  overflow: hidden;
+}
+:deep(.van-collapse-item__content) {
+  padding: 0 0 0 16px;
+  background: #fafafa;
+}
+:deep(.van-cell) {
+  margin-bottom: 1px;
+  border-radius: 4px;
+}
+.dialog-content {
+  padding: 20px 16px;
+}
+.path-hint {
+  font-size: 11px;
+  color: #999;
+  text-align: center;
+  margin-bottom: 12px;
+}
+:deep(.van-action-sheet__subname) {
+  font-size: 11px;
+  color: #999;
+}
 </style>

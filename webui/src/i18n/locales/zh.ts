@@ -73,5 +73,5 @@ export default {
   path_name_placeholder: 'path 名称，如 path4',
   name_empty: '名称不能为空',
   governor_exists: '调速器已存在',
-  path_exists: 'path 已存在'
+  path_exists: 'path 已存在',
 } as const;

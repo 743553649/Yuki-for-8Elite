@@ -13,7 +13,7 @@ const fetchLog = async () => {
   try {
     const text = await Bridge.getDaemonLog();
     logContent.value = text || '';
-    
+
     // 自动滚动到底部
     await nextTick();
     if (terminalBody.value) {
@@ -26,34 +26,44 @@ const fetchLog = async () => {
 
 // 日志内容可能包含应用可控的字符串（例如进程名），必须先把 HTML 特殊字符
 // 转义，再做高亮；否则会被 v-html 当标签执行，而页面里存在 root 权限的执行桥。
-const escapeHtml = (text: string): string => text
-  .replace(/&/g, '&amp;')
-  .replace(/</g, '&lt;')
-  .replace(/>/g, '&gt;')
-  .replace(/"/g, '&quot;')
-  .replace(/'/g, '&#39;');
+const escapeHtml = (text: string): string =>
+  text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 
 // 使用正则对日志内容进行高亮解析
 const formattedLog = computed(() => {
   if (!logContent.value) return `<div class="log-empty">${escapeHtml(t('log_empty'))}</div>`;
 
-  return logContent.value.split('\n').map(line => {
-    // 过滤掉空行
-    if (!line.trim()) return '';
+  return logContent.value
+    .split('\n')
+    .map((line) => {
+      // 过滤掉空行
+      if (!line.trim()) return '';
 
-    // 1. 高亮时间戳 [2026-02-23 02:31:07]
-    let html = escapeHtml(line).replace(/\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]/g, match => `<span class="log-time">${match}</span>`);
-    
-    // 2. 高亮日志等级 [INFO], [WARN], [ERROR]
-    html = html.replace(/\[INFO\]/g, `<span class="log-info">[INFO]</span>`);
-    html = html.replace(/\[WARN\]/g, `<span class="log-warn">[WARN]</span>`);
-    html = html.replace(/\[ERROR\]/g, `<span class="log-error">[ERROR]</span>`);
-    
-    // 3. 高亮模块标签 [yumi::xxx] 或 [Scheduler] 等
-    html = html.replace(/\[(yumi[^\]]*|Scheduler|AppDetect|Screen|Boot)\]/g, match => `<span class="log-tag">${match}</span>`);
+      // 1. 高亮时间戳 [2026-02-23 02:31:07]
+      let html = escapeHtml(line).replace(
+        /\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]/g,
+        (match) => `<span class="log-time">${match}</span>`,
+      );
 
-    return `<div class="log-line">${html}</div>`;
-  }).join('');
+      // 2. 高亮日志等级 [INFO], [WARN], [ERROR]
+      html = html.replace(/\[INFO\]/g, `<span class="log-info">[INFO]</span>`);
+      html = html.replace(/\[WARN\]/g, `<span class="log-warn">[WARN]</span>`);
+      html = html.replace(/\[ERROR\]/g, `<span class="log-error">[ERROR]</span>`);
+
+      // 3. 高亮模块标签 [yumi::xxx] 或 [Scheduler] 等
+      html = html.replace(
+        /\[(yumi[^\]]*|Scheduler|AppDetect|Screen|Boot)\]/g,
+        (match) => `<span class="log-tag">${match}</span>`,
+      );
+
+      return `<div class="log-line">${html}</div>`;
+    })
+    .join('');
 });
 
 onMounted(() => {
@@ -63,14 +73,7 @@ onMounted(() => {
 
 <template>
   <div class="log-viewer">
-    <van-nav-bar
-      :title="t('view_log')"
-      left-arrow
-      @click-left="$router.back()"
-      fixed
-      placeholder
-      z-index="100"
-    >
+    <van-nav-bar :title="t('view_log')" left-arrow @click-left="$router.back()" fixed placeholder z-index="100">
       <template #right>
         <van-icon name="replay" size="18" @click="fetchLog" />
       </template>
@@ -87,7 +90,7 @@ onMounted(() => {
         </div>
         <div class="terminal-title">{{ t('log_terminal_title', { file: 'daemon.log', shell: 'bash' }) }}</div>
       </div>
-      
+
       <div class="terminal-body" ref="terminalBody">
         <div class="log-container" v-html="formattedLog"></div>
       </div>
@@ -99,7 +102,7 @@ onMounted(() => {
 .log-viewer {
   min-height: 100vh;
   /* 背景颜色与主页保持一致，让卡片凸显出来 */
-  background-color: #f7f8fa; 
+  background-color: #f7f8fa;
   padding-bottom: 20px;
 }
 
@@ -117,7 +120,7 @@ onMounted(() => {
   flex-direction: column;
   overflow: hidden;
   /* 高度适配：屏幕高度减去导航栏和外边距 */
-  height: calc(100vh - 100px); 
+  height: calc(100vh - 100px);
 }
 
 /* 伪 Mac 窗口控制栏 */
@@ -142,9 +145,15 @@ onMounted(() => {
   display: inline-block;
 }
 
-.mac-buttons .close { background-color: #ff5f56; }
-.mac-buttons .minimize { background-color: #ffbd2e; }
-.mac-buttons .maximize { background-color: #27c93f; }
+.mac-buttons .close {
+  background-color: #ff5f56;
+}
+.mac-buttons .minimize {
+  background-color: #ffbd2e;
+}
+.mac-buttons .maximize {
+  background-color: #27c93f;
+}
 
 .terminal-title {
   position: absolute;
@@ -187,11 +196,29 @@ onMounted(() => {
 }
 
 /* === 语法高亮 CSS === */
-:deep(.log-empty) { color: #888; font-style: italic; }
-:deep(.log-line) { margin-bottom: 2px; }
-:deep(.log-time) { color: #6a9955; /* 绿色系时间戳 */ }
-:deep(.log-info) { color: #569cd6; font-weight: bold; /* 蓝色 INFO */ }
-:deep(.log-warn) { color: #dcdcaa; font-weight: bold; /* 黄色 WARN */ }
-:deep(.log-error) { color: #f44747; font-weight: bold; /* 红色 ERROR */ }
-:deep(.log-tag) { color: #c586c0; /* 紫色模块标签 */ }
+:deep(.log-empty) {
+  color: #888;
+  font-style: italic;
+}
+:deep(.log-line) {
+  margin-bottom: 2px;
+}
+:deep(.log-time) {
+  color: #6a9955; /* 绿色系时间戳 */
+}
+:deep(.log-info) {
+  color: #569cd6;
+  font-weight: bold; /* 蓝色 INFO */
+}
+:deep(.log-warn) {
+  color: #dcdcaa;
+  font-weight: bold; /* 黄色 WARN */
+}
+:deep(.log-error) {
+  color: #f44747;
+  font-weight: bold; /* 红色 ERROR */
+}
+:deep(.log-tag) {
+  color: #c586c0; /* 紫色模块标签 */
+}
 </style>

@@ -62,7 +62,8 @@ export default {
   cpu_governor: 'CPU governor',
   governor_system: 'Use system governor',
   freq_range_steps_below: 'Frequency steps below target',
-  freq_range_steps_hint: 'The maximum number of steps below the target frequency. Enter 0 to use only the target frequency.',
+  freq_range_steps_hint:
+    'The maximum number of steps below the target frequency. Enter 0 to use only the target frequency.',
   freq_range_steps_invalid: 'Enter a whole number from 0 to 4294967295.',
   add_governor: 'Add Governor',
   add_path: 'Add Path',
@@ -73,5 +74,5 @@ export default {
   path_name_placeholder: 'Path name, e.g. path4',
   name_empty: 'Name cannot be empty',
   governor_exists: 'Governor already exists',
-  path_exists: 'Path already exists'
+  path_exists: 'Path already exists',
 } as const;

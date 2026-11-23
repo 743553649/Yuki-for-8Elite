@@ -5,7 +5,7 @@ import zh from './locales/zh';
 
 const messages = {
   en,
-  zh
+  zh,
 };
 
 const i18n = createI18n({

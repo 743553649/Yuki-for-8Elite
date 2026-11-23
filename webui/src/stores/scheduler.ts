@@ -7,7 +7,7 @@ export const useSchedulerStore = defineStore('scheduler', {
     currentMode: 'balance',
     appRules: {} as Record<string, string>,
     isDaemonRunning: false, // 必须有这个初始状态
-    loading: false
+    loading: false,
   }),
   actions: {
     async initData() {
@@ -17,7 +17,7 @@ export const useSchedulerStore = defineStore('scheduler', {
         const [mode, rules, running] = await Promise.all([
           Bridge.getCurrentMode(),
           Bridge.getAppRules(),
-          Bridge.isDaemonRunning() 
+          Bridge.isDaemonRunning(),
         ]);
         this.currentMode = mode;
         this.appRules = rules;
@@ -29,6 +29,6 @@ export const useSchedulerStore = defineStore('scheduler', {
     async switchMode(mode: string) {
       await Bridge.setMode(mode);
       this.currentMode = mode;
-    }
-  }
+    },
+  },
 });

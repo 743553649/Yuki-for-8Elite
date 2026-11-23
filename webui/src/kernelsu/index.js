@@ -88,7 +88,7 @@ function Stdio() {
       delete window[name];
     }
 
-    child.on("exit", code => {
+    child.on("exit", (_code) => {
         cleanup(childCallbackName);
     });
 

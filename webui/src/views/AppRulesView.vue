@@ -21,17 +21,23 @@ const actions = computed(() => [
   { name: t('mode_performance'), subname: t('desc_performance'), color: '#FF9800', modeKey: 'performance' },
   { name: t('mode_fast'), subname: t('desc_fast'), color: '#F44336', modeKey: 'fast' },
   { name: t('mode_fas'), subname: t('desc_fas'), color: '#E91E63', modeKey: 'fas' },
-  { name: t('delete_rule'), color: '#FF0000', isDelete: true }
+  { name: t('delete_rule'), color: '#FF0000', isDelete: true },
 ]);
 
 const modeLabel = (modeKey: string) => {
   switch (modeKey) {
-    case 'powersave': return t('mode_powersave');
-    case 'balance': return t('mode_balance');
-    case 'performance': return t('mode_performance');
-    case 'fast': return t('mode_fast');
-    case 'fas': return t('mode_fas');
-    default: return modeKey;
+    case 'powersave':
+      return t('mode_powersave');
+    case 'balance':
+      return t('mode_balance');
+    case 'performance':
+      return t('mode_performance');
+    case 'fast':
+      return t('mode_fast');
+    case 'fas':
+      return t('mode_fas');
+    default:
+      return modeKey;
   }
 };
 
@@ -42,7 +48,7 @@ onMounted(async () => {
   // 批量获取应用信息，建立 pkg → label 映射
   try {
     const infos = getPackagesInfo(packages);
-    infos.forEach(info => {
+    infos.forEach((info) => {
       appLabelMap.value[info.packageName] = info.appLabel;
     });
   } catch (e) {
@@ -56,9 +62,8 @@ onMounted(async () => {
 const filteredApps = computed(() => {
   const q = searchText.value.toLowerCase();
   if (!q) return apps.value;
-  return apps.value.filter(pkg =>
-    pkg.toLowerCase().includes(q) ||
-    (appLabelMap.value[pkg] || '').toLowerCase().includes(q)
+  return apps.value.filter(
+    (pkg) => pkg.toLowerCase().includes(q) || (appLabelMap.value[pkg] || '').toLowerCase().includes(q),
   );
 });
 
@@ -107,7 +112,7 @@ const onSelectAction = async (item: any) => {
         <template #icon>
           <img
             :src="`ksu://icon/${pkg}`"
-            style="width: 40px; height: 40px; margin-right: 12px; border-radius: 8px;"
+            style="width: 40px; height: 40px; margin-right: 12px; border-radius: 8px"
             loading="lazy"
           />
         </template>
@@ -131,5 +136,8 @@ const onSelectAction = async (item: any) => {
 </template>
 
 <style scoped>
-.no-rule { font-size: 12px; color: #bbb; }
+.no-rule {
+  font-size: 12px;
+  color: #bbb;
+}
 </style>
