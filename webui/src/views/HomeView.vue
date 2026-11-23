@@ -125,7 +125,7 @@ const copyQQGroup = async () => {
           :value="t('click_to_view')"
           icon="cluster-o"
           is-link
-          url="https://github.com/imacte/yumi"
+          url="https://github.com/743553649/Yuki-for-8Elite"
         />
       </van-cell-group>
     </div>

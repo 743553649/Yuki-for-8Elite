@@ -19,6 +19,8 @@
 
 ## 📋 About The Project
 
+> This project is an 8 Elite fork maintained from [imacte/yumi](https://github.com/imacte/yumi) (GPL-3.0). Versioning is decoupled from upstream starting at `v0.1.0`.
+
 **yumi** is a powerful Android CPU scheduling control system, consisting of a lightweight **WebUI** management interface and a high-performance **Rust daemon (yumi)**. The system uses **eBPF** kernel probes to collect CPU scheduling events and rendering frame data in real time. Combined with an advanced **PID controller** and **CPU Load Governor (CLG)**, it dynamically adjusts CPU frequency for different usage scenarios to achieve the optimal balance between performance and power efficiency. The built-in **FAS (Frame Aware Scheduling)** engine analyzes game frame times in real time to dynamically adjust CPU frequency on a per-frame basis, maximizing power savings while maintaining smooth gameplay.
 
 ### ✨ Key Features
@@ -494,7 +496,7 @@ Attached to a `libgui.so` frame submission function (uprobe), triggered on every
 
 ### Installation Steps
 
-1.  **Download the Module** — Download the latest release from the [Releases](https://github.com/imacte/yumi/releases) page.
+1.  **Download the Module** — Download the latest release from the [Releases](https://github.com/743553649/Yuki-for-8Elite/releases) page.
 2.  **Flash the Module** — Flash the yumi module via Magisk / KernelSU.
 3.  **Access the WebUI** — Once the module starts, open the WebUI in your browser to manage and configure settings.
 4.  **Configure Rules** — Set performance strategies for different apps as needed.
@@ -573,13 +575,13 @@ Attached to a `libgui.so` frame submission function (uprobe), triggered on every
 
 <div align="center">
 
-[![Star History Chart](https://api.star-history.com/svg?repos=imacte/yumi&type=Date)](https://star-history.com/#imacte/yumi&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=743553649/Yuki-for-8Elite&type=Date)](https://star-history.com/#743553649/Yuki-for-8Elite&Date)
 
 </div>
 
 ## 📮 Contact Us
 
-  * **GitHub Issues** — [For project issues and suggestions](https://github.com/imacte/yumi/issues)
+  * **GitHub Issues** — [For project issues and suggestions](https://github.com/743553649/Yuki-for-8Elite/issues)
   * **QQ Group** — 1036909137
   * **Telegram** — [Join TG Channel](https://t.me/+gp4adLJAsXYzMjc1)
 

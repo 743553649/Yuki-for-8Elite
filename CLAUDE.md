@@ -140,7 +140,8 @@ CI 在打包前依次执行：`cargo fmt --check`、`cargo clippy -D warnings`�
 
 - `xtask/src/main.rs` 负责编译 WebUI / 核心并打 zip；zip 名中的数字是 `git rev-list --count HEAD`
 - `scripts/build-local.sh` 是本机构建入口；`module/customize.sh` 在升级安装时保留旧模块的 `config.yaml` 与 `rules.yaml`
-- `updateInformation/update.json` 与 `module/module.prop` 随发版更新；当前 `origin` 指向上游仓库，发布到自己的仓库时需要同步修改
+- `origin` 是自己的仓库 `743553649/Yuki-for-8Elite`，`upstream` 是 `imacte/yumi`；同步上游用 `git fetch upstream && git merge upstream/main`
+- 发版时同步 `Cargo.toml`、`module/module.prop`、`updateInformation/update.json` 三处版本号；正式版 Release 会额外上传固定名称 `yumi-latest.zip`，供 `update.json` 的 `releases/latest/download/yumi-latest.zip` 使用
 - `.github/workflows/build.yml`：推 `main` 自动发布预发行版（标签 `yumi-v<版本>-pre.<run_number>`，指向本次提交）；推送版本标签发布正式版，且标签版本必须与 `Cargo.toml` 的 `version` 完全一致；PR 只产出 artifact
 - 正式发版时同步更新 `updateInformation/update.json` 的 `version` / `versionCode` / `zipUrl` 与 `module/module.prop`；当前版本号在 `Cargo.toml`
 

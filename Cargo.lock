@@ -1994,7 +1994,7 @@ dependencies = [
 
 [[package]]
 name = "yumi"
-version = "2.0.2"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "aya",

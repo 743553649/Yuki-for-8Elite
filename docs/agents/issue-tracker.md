@@ -5,7 +5,7 @@
 
 本仓库的 issue 和规格说明以 markdown 文件形式存放在 `.scratch/` 目录。
 
-本仓库是 `imacte/yumi` 的本地克隆：issue 只记在本仓库的 `.scratch/` 下，不要向上游 GitHub 仓库提交。
+本仓库是 `imacte/yumi` 的 8 Elite 分支：`origin` 为 `743553649/Yuki-for-8Elite`，`upstream` 为 `imacte/yumi`。issue 只记在本仓库，不要提交给上游。
 
 ## 约定
 

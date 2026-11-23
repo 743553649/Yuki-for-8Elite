@@ -236,7 +236,13 @@ jobs:
           name: ${{ needs.build.outputs.artifact-name }}
           path: dist
 
-      # 3. 发布正式版
+      # 3. 额外生成一个固定名称的副本：
+      #    update.json 指向 releases/latest/download/yumi-latest.zip，
+      #    这样每次发版不必再修改下载地址。
+      - name: Add stable asset name
+        run: cp "$(ls dist/*.zip | head -n 1)" dist/yumi-latest.zip
+
+      # 4. 发布正式版
       - name: Publish release
         uses: softprops/action-gh-release@v3
         with:

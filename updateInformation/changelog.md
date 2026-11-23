@@ -1,6 +1,8 @@
 # 🚀 更新日志 | Changelog
 
-## 🚧 未发布 (Unreleased)
+## 📦 v0.1.0（独立版本起点）
+
+> 从本版本起，版本号与上游 `imacte/yumi` 脱离，按本项目的节奏发布。
 
 ### 🔒 修复 (Fixes)
 * **[Core]** 异常退出（被强杀 / 掉电）后自动恢复接管前的 CPU governor 与频率；正常停止、SIGTERM/SIGINT 与卸载脚本也会恢复
@@ -24,6 +26,8 @@
 * 刷入升级时保留用户已有的 `config.yaml` 与 `rules.yaml`
 * 新增本机构建脚本 `scripts/build-local.sh` 与真机自检脚本
 * u32 乘法改饱和运算，路径转 UTF-8 与 eBPF panic 路径加固
+
+> 以下为上游历史版本（版本号沿用上游编号）。
 
 ## 📦 v2.0.2
 

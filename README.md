@@ -19,6 +19,8 @@
 
 ## 📋 项目介绍
 
+> 本项目是基于 [imacte/yumi](https://github.com/imacte/yumi)（GPL-3.0）维护的 8 Elite 分支，版本号自 `v0.1.0` 起与上游脱离。
+
 **yumi** 是一个功能强大的 Android CPU 调度控制系统，由轻量级的 **WebUI** 管理界面和高性能的 **Rust 守护进程 (yumi)** 组成。系统通过 **eBPF** 内核探针实时采集 CPU 调度事件和渲染帧数据，结合先进的 **PID 控制器** 和 **CPU 负载调速器 (CLG)**，根据不同使用场景动态调整 CPU 频率，实现最佳的性能与能效平衡。内置的 **FAS (Frame Aware Scheduling)** 帧感知调度引擎可实时分析游戏帧时间，以逐帧精度动态调频，在保证流畅度的同时最大化省电。
 
 ### ✨ 主要特性
@@ -494,7 +496,7 @@ yumi 使用两个 eBPF 探针进行内核级数据采集：
 
 ### 安装步骤
 
-1.  **下载模块** - 从 [Releases](https://github.com/imacte/yumi/releases) 下载最新版本。
+1.  **下载模块** - 从 [Releases](https://github.com/743553649/Yuki-for-8Elite/releases) 下载最新版本。
 2.  **刷入模块** - 通过 Magisk / KernelSU 刷入 yumi 模块。
 3.  **访问 WebUI** - 模块启动后，通过浏览器访问 WebUI 进行管理和配置。
 4.  **配置规则** - 根据需要为不同应用设置性能策略。
@@ -573,13 +575,13 @@ yumi 使用两个 eBPF 探针进行内核级数据采集：
 
 <div align="center">
 
-[![Star History Chart](https://api.star-history.com/svg?repos=imacte/yumi&type=Date)](https://star-history.com/#imacte/yumi&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=743553649/Yuki-for-8Elite&type=Date)](https://star-history.com/#743553649/Yuki-for-8Elite&Date)
 
 </div>
 
 ## 📮 联系我们
 
-  * **GitHub Issues** - [项目问题和建议](https://github.com/imacte/yumi/issues)
+  * **GitHub Issues** - [项目问题和建议](https://github.com/743553649/Yuki-for-8Elite/issues)
   * **QQ 群** - 1036909137
   * **Telegram** - [加入 TG 频道](https://t.me/+gp4adLJAsXYzMjc1)
 
