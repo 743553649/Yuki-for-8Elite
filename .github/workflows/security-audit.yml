@@ -1,0 +1,36 @@
+name: Security Audit
+
+# 每周检查依赖漏洞；也可在 Actions 页面手动触发。
+# 构建流程只在依赖变更时才会跑审计，这里补上"上游发布新公告"的场景。
+on:
+  schedule:
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rust:
+    name: Rust dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: taiki-e/install-action@cargo-audit
+      - name: Audit Rust dependencies
+        run: cargo audit
+
+  webui:
+    name: WebUI dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - name: Install WebUI dependencies
+        working-directory: ./webui
+        run: npm ci
+      - name: Audit WebUI dependencies
+        working-directory: ./webui
+        run: npm audit --audit-level=high

@@ -71,17 +71,33 @@ jobs:
         working-directory: ./webui
         run: npm install
 
-      # 4.5 WebUI 类型检查：只构建不检查会漏掉类型错误
+      # 4.5 WebUI 类型检查与依赖审计：只构建不检查会漏掉类型错误与已知漏洞
       - name: Type-check WebUI
         working-directory: ./webui
         run: npm run type-check
+
+      - name: Audit WebUI dependencies
+        working-directory: ./webui
+        run: npm audit --audit-level=high
+
+      - name: Lint WebUI
+        working-directory: ./webui
+        run: npm run lint
+
+      - name: Check WebUI formatting
+        working-directory: ./webui
+        run: npm run format:check
+
+      - name: Test WebUI
+        working-directory: ./webui
+        run: npm run test
 
       # 5. 配置 Rust Nightly 环境并添加 Android 交叉编译目标
       - name: Setup Rust Toolchain
         uses: dtolnay/rust-toolchain@nightly
         with:
           targets: aarch64-linux-android
-          components: rust-src # build-std 需要用到 (含 bpfel-unknown-none)
+          components: rust-src, clippy, rustfmt # build-std 需要 rust-src；lint 门禁需要 clippy/rustfmt
 
       - name: Install prebuilt bpf-linker
         shell: bash
@@ -100,6 +116,12 @@ jobs:
           tar --zstd -xf "$archive" -C "$install_dir"
           "$install_dir/bpf-linker" --version
           echo "$install_dir" >> "$GITHUB_PATH"
+
+      - name: Rust format check
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy -p yumi --all-targets --locked -- -D warnings
 
       - name: Test monitors and compiled probe isolation
         run: cargo test -p yumi --bin yumi --locked --future-incompat-report
