@@ -70,12 +70,16 @@ sh scripts/device-selftest.sh --yes # 深度自检：停启守护进程、kill -
 ```sh
 cd webui
 npm install
-npm run dev         # 浏览器里 window.ksu 不存在时自动用 MockBridge
-npm run type-check  # vue-tsc
-npm run build       # 产出 dist/，由 xtask 拷进 webroot/
+npm run dev          # 浏览器里 window.ksu 不存在时自动用 MockBridge
+npm run type-check   # vue-tsc
+npm run lint         # ESLint（flat config，正确性问题）
+npm run format:check # Prettier 格式检查
+npm run test         # Vitest 单元测试
+npm run build        # 产出 dist/，由 xtask 拷进 webroot/
 ```
 
-CI 在打包前执行 `cargo test -p yumi --bin yumi --locked --future-incompat-report`。
+CI 在打包前依次执行：`cargo fmt --check`、`cargo clippy -D warnings`、WebUI `type-check/lint/format:check/test`、`npm audit`、`cargo test`。
+每周还有 `security-audit.yml` 定时跑 `cargo audit` 与 `npm audit`。
 
 ## 架构
 
@@ -119,6 +123,7 @@ CI 在打包前执行 `cargo test -p yumi --bin yumi --locked --future-incompat-
 
 - `config/config.yaml`：`meta`（loglevel / language，语言默认 `zh`）、`function`（IOOptimization、CpuIdleScalingGovernor）、各模式 `powersave` / `balance` / `performance` / `fast` 的 `cpu_load_governor` 参数
 - `rules.yaml`（模块**根目录**，不在 `config/` 下）：`global_mode`、`app_modes`、`ignored_apps`、`fas_rules`（`fps_gears`、`pid`、`per_app_profiles` 等）
+- 两个文件都有 `schema_version`（缺失按 0 处理）：旧规则读取时会自动把 `per_app_margins` 迁移到 `per_app_profiles`；新增字段或改语义时递增版本并在 `migrate()` 里补迁移
 - 两个文件都支持 inotify 热重载；日志语言与级别也随 `config.yaml` 热切换
 - 温度封顶：`fas_rules.core_temp_threshold`（默认 0 = 关闭）连续两次采样超阈值才封顶，`core_temp_throttle_perf` 为封顶后的 perf 上限；解除不做延迟
 - 模式字符串 `fas` 表示帧感知调度，其余值对应 `config.yaml` 里的 CLG 模式；当前模式写入 `current_mode.txt`

@@ -14,6 +14,10 @@
 * **[Module]** `disable_boost.sh` 默认拒绝执行，需显式设置 `YUMI_ALLOW_THERMAL_DISABLE=1`
 
 ### ⚙️ 工程 (Engineering)
+* Rust 统一 `cargo fmt` 格式，Clippy 告警清零并接入 CI 门禁
+* WebUI 增加 ESLint / Prettier / Vitest，base64 编解码补充单元测试
+* 依赖审计：修复 npm 漏洞；新增每周 Rust / WebUI 安全审计工作流
+* `config.yaml` / `rules.yaml` 增加 `schema_version`，旧规则自动迁移
 * 默认日志语言改为中文
 * CI 增加 WebUI 类型检查；TypeScript 降至 5.9 以兼容 `vue-tsc`
 * 清理未使用的翻译键、死代码与 lodash 依赖

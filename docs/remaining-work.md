@@ -101,4 +101,13 @@ SHA256：`86fc6aeefd751fbd286274b135464a22e84d65b2c3cced226382c23e1799cef9`
 - [x] 真机脚本：`scripts/device-smoke.sh`（只读）、`scripts/device-selftest.sh`（深度，需 `--yes`）
 - [x] 文档审计与更新：`CLAUDE.md`、中英文 README、`docs/monitor-recovery.md`、`docs/agents/issue-tracker.md`、changelog
 - [x] 真机验证：`device-smoke.sh` 9 项全过；`device-selftest.sh --yes` 13 PASS / 0 FAIL / 1 SKIP（温控实测需 `YUMI_TEST_GAME`）
-- [ ] 待办：应用工具包升级后 Rust 模块被移除；重装「Rust 语言」模块后复验 `scripts/build-local.sh` 全流程
+- [x] 应用工具包装回「Rust 语言」并重下 bpf-linker 0.11.1 后，`scripts/build-local.sh` 全流程通过（WebUI → 编译 → 20 项测试 → 打包）
+
+## P1：质量门禁（2026-11-23 完成）
+
+- [x] Rust：`cargo fmt --all` 统一格式；`cargo clippy -D warnings` 清零告警并接入 CI
+- [x] 修复 `build.rs` 嵌套构建继承 clippy `RUSTC_WRAPPER` 导致 eBPF 探针编译失败的问题
+- [x] WebUI：ESLint 10 + Prettier + Vitest；base64 编解码抽成 `webui/src/utils/encoding.ts` 并加 3 项单测
+- [x] 依赖审计：`npm audit` 修复至 0 漏洞并接入构建 CI；新增每周 `security-audit.yml`（cargo audit + npm audit）
+- [x] 配置结构版本：`config.yaml` / `rules.yaml` 增加 `schema_version`，旧规则自动迁移；新增迁移单测
+- [ ] 待办：首次在 GitHub Actions 上确认新增门禁与审计工作流通过（本机无法完整模拟 runner）
