@@ -36,5 +36,33 @@ ui_print " "
 ui_print "$MSG_WELCOME"
 ui_print " "
 
+# --- 升级时保留用户的配置 ---
+# 模块更新会整体替换模块目录。如果不主动保留，用户自定义的规则和模式设置
+# 会被包内默认值覆盖。两个路径可通过环境变量覆盖，便于本地模拟测试。
+MODULES_BASE="${YUMI_MODULES_BASE:-/data/adb/modules}"
+MODULES_UPDATE_BASE="${YUMI_MODULES_UPDATE_BASE:-/data/adb/modules_update}"
+MOD_ID=$(basename "$MODPATH")
+OLD_MODULE=""
+for BASE in "$MODULES_BASE" "$MODULES_UPDATE_BASE"; do
+  CANDIDATE="$BASE/$MOD_ID"
+  [ "$CANDIDATE" = "$MODPATH" ] && continue
+  if [ -f "$CANDIDATE/module.prop" ]; then
+    OLD_MODULE="$CANDIDATE"
+    break
+  fi
+done
+
+if [ -n "$OLD_MODULE" ]; then
+  for REL in config/config.yaml rules.yaml; do
+    if [ -f "$OLD_MODULE/$REL" ]; then
+      mkdir -p "$MODPATH/$(dirname "$REL")"
+      cp -f "$OLD_MODULE/$REL" "$MODPATH/$REL"
+      ui_print "已保留旧配置: $REL"
+    fi
+  done
+  ui_print "升级完成，原有配置已保留"
+else
+  ui_print "首次安装，使用默认配置"
+fi
+
 # --- 结束 ---
-# 保留模块默认配置不变，不进行任何文件操作
