@@ -45,8 +45,8 @@ SHA256：`5df6ee207a8946b72c992fee0265f7196097da690ae637fe882d27e9d933516e`
 | 温度封顶 | PASS | 阈值改 20℃ 后真实日志 `capping perf at 0.30`；恢复阈值后 `removing thermal cap` |
 | 监控重试 | 观察项 | 正常使用期间 0 次重试；未做故障注入（无法安全制造 eBPF 故障） |
 
-另注：刷入模块会用包内默认值覆盖 `config.yaml` / `rules.yaml`（`customize.sh` 有意如此），默认日志语言为 `en`。
-如需中文日志，在 `config/config.yaml` 里把 `language` 改成 `zh` 即可。
+另注：当时刷入模块会用包内默认值覆盖 `config.yaml` / `rules.yaml`。该问题已在工程化补强中修复
+（`customize.sh` 升级时保留旧配置），默认日志语言也已改为 `zh`。
 
 ## 第 3 批：清理（2026-11-23 完成）
 
@@ -57,7 +57,7 @@ SHA256：`5df6ee207a8946b72c992fee0265f7196097da690ae637fe882d27e9d933516e`
 - [x] eBPF panic handler 改为 `loop { spin_loop() }`，去掉 `unreachable_unchecked`
 - [x] 附带加固：配置目录监视补上 CREATE / MOVED_TO，原子替换保存也能触发热重载
 
-验证：Rust 编译通过、15 项测试全过；WebUI `npm run build` 与 `npm run type-check` 均通过。
+验证：Rust 编译通过、当时 15 项测试全过（加入温度防抖后为 16 项）；WebUI `npm run build` 与 `npm run type-check` 均通过。
 
 ## 当时漏归批的两项（2026-11-23 完成）
 
@@ -72,7 +72,7 @@ SHA256：`5df6ee207a8946b72c992fee0265f7196097da690ae637fe882d27e9d933516e`
 
 产物（第 3 批）：`/sdcard/cccodroid/yumi-2.0.2-238-20261123-0047.zip`
 SHA256：`86fc6aeefd751fbd286274b135464a22e84d65b2c3cced226382c23e1799cef9`
-注意：该包尚未刷入；当前设备仍运行第二批二进制，仅语言配置已热切换。
+该包已于 2026-11-23 01:17 刷入并通过冒烟测试（见下）。
 
 ### 第 3 批刷入后冒烟测试（2026-11-23 01:17）
 
@@ -93,3 +93,12 @@ SHA256：`86fc6aeefd751fbd286274b135464a22e84d65b2c3cced226382c23e1799cef9`
 
 已处理：温度封顶加入防抖——连续两次超阈值才封顶，解除仍然立即生效（保护优先）。
 单次异常读数只会让计数 +1，下一次正常回落即清零。
+
+## 工程化补强（2026-11-23）
+
+- [x] 刷入升级保留用户配置：`module/customize.sh` 备份旧模块的 `config.yaml` / `rules.yaml`（已用沙箱模拟验证）
+- [x] 本机构建脚本 `scripts/build-local.sh`：自动识别 nightly / 稳定版，串联 WebUI、编译、测试与打包
+- [x] 真机脚本：`scripts/device-smoke.sh`（只读）、`scripts/device-selftest.sh`（深度，需 `--yes`）
+- [x] 文档审计与更新：`CLAUDE.md`、中英文 README、`docs/monitor-recovery.md`、`docs/agents/issue-tracker.md`、changelog
+- [x] 真机验证：`device-smoke.sh` 9 项全过；`device-selftest.sh --yes` 13 PASS / 0 FAIL / 1 SKIP（温控实测需 `YUMI_TEST_GAME`）
+- [ ] 待办：应用工具包升级后 Rust 模块被移除；重装「Rust 语言」模块后复验 `scripts/build-local.sh` 全流程

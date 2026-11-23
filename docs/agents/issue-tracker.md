@@ -1,5 +1,8 @@
 # Issue 记录方式：本地 Markdown
 
+> **当前状态**：实际工作队列维护在 `docs/remaining-work.md`。`.scratch/` 流程尚未启用；
+> 如需启用，先创建目录并按下面的约定开始记录。
+
 本仓库的 issue 和规格说明以 markdown 文件形式存放在 `.scratch/` 目录。
 
 本仓库是 `imacte/yumi` 的本地克隆：issue 只记在本仓库的 `.scratch/` 下，不要向上游 GitHub 仓库提交。

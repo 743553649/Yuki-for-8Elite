@@ -10,11 +10,12 @@
 - 只发送新产生的帧间隔，不重放旧帧；CPU 样本保持 CPU ID 索引，前台负载采用最忙线程的完整累计快照差值。
 - CLG 在首个有效 CPU 样本到达后启动。FAS 还需要目标 PID 的有效帧。超过 2 秒无有效样本，或监控上报退出时，释放相关调频控制。
 - 控制器交接时先恢复接管前的 governor 和频率上下限，恢复失败时保留快照并重试。FAS 退出时也尝试恢复 perfmgr 设置。
+- 接管前的原始 governor / 频率区间会落盘为模块根目录的 `cpufreq_baseline.conf`：启动时若发现快照先恢复；正常停止恢复成功后删除。收到 SIGTERM / SIGINT 时先恢复再退出，卸载脚本也会按快照恢复一次。
 - 初始化日志输出内核版本、页大小、memlock 设置失败的 errno；监控错误输出完整原因链。频率日志统一使用 kHz。
 
 ## 自动检查
 
-在 Linux、Rust nightly、rust-src 和 bpf-linker 可用的环境执行：
+CI 在 Linux（Rust nightly + rust-src + bpf-linker）执行；Android 设备上可用 `scripts/build-local.sh`（稳定版经 `RUSTC_BOOTSTRAP` 解锁 build-std）：
 
 工作流在测试前下载官方预编译的 `bpf-linker 0.11.1`（Linux x86_64 musl），校验固定的 SHA-256 后加入 `GITHUB_PATH`，供测试和 Android 打包共用。`build.rs` 不再隐式执行 `cargo install`；本地构建也需要先按 [上游安装说明](https://github.com/aya-rs/bpf-linker#installation) 安装预编译版本并加入 PATH。
 
@@ -24,14 +25,11 @@ cargo test -p yumi --bin yumi --locked
 
 测试包括帧事件解码、重复/乱序/过期帧、PID 切换基线、CPU pending 时间差分、监控超时恢复、RingBuf 降级错误分类及真实 ELF 中的程序/map 隔离。CI 已加入此步骤。
 
-本次 Windows 环境已执行：
+## 验收状态
 
-- 三个程序的 `bpfel-unknown-none` release 目标 `cargo check`。
-- 用户态与全部测试的 `aarch64-linux-android` 类型检查。检查使用临时 harness 绕过本机缺失的 BPF 链接器，嵌入占位字节，不能代表 ELF 链接成功或内核加载成功。
-- 6 项不依赖 Linux 的采样和健康状态测试，均通过。
-- build.rs 的 Rust 编译与 `git diff --check`。
-
-本机缺少 bpf-linker，未完成完整 ELF 链接、模块打包或实机加载；错误分类和真实 ELF 隔离测试已通过类型检查，执行留给 Linux CI。
+- CI（Linux）：`cargo test` 与模块打包通过。
+- Android 设备：2026-11-23 使用本机 Rust 工具链完成守护进程与三个探针编译，16 项测试通过；等效流程已固化为 `scripts/build-local.sh`（脚本全流程需在重装应用的「Rust 语言」工具包模块后复验）。
+- 一加 13T（Android 16）：正常启动、CLG 接管、FAS 帧率、kill -9 恢复、配置损坏日志、规则原子替换与温度封顶均已通过真机验证。
 
 ## 实机验收
 

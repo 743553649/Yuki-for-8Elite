@@ -27,7 +27,7 @@
   * 🎯 **FAS Frame-Aware Scheduling** — Built-in PID controller + frame time analysis engine for per-frame dynamic frequency scaling, balancing smoothness and power in gaming scenarios.
   * 📊 **eBPF Kernel-Level Monitoring** — Zero-overhead CPU utilization and frame rate collection via `sched_switch` tracepoint and `queueBuffer` uprobe.
   * ⚡ **CPU Load Governor (CLG)** — Per-cluster CPU frequency ranges based on real-time eBPF load data for everyday non-gaming use.
-  * 🌡️ **Temperature-Aware Throttling** — Reads CPU temperature sensors in real time, automatically throttling when thresholds are exceeded.
+  * 🌡️ **Temperature-Aware Throttling** — Reads CPU temperature sensors in real time and caps performance after two consecutive samples exceed the threshold (disabled by default).
   * 🌙 **Smart Screen-Off Power Saving** — Automatically enters Doze mode when the screen is off, enforcing a low performance ceiling for maximum power savings.
   * 🌐 **Lightweight WebUI** — No extra app required; manage all scheduling settings directly from your browser.
   * 📱 **App Rule Management** — Set dedicated performance strategies for different applications, with per-app frame rate gear and margin support.
@@ -138,7 +138,7 @@ The core of yumi is driven by a Rust daemon, **yumi**. It uses eBPF kernel probe
 | **CPU Frequency Control** | Per-cluster sysfs frequency limits with in-range frequency selection by the kernel governor. |
 | **Auto Capacity Weight** | Runtime detection of each core cluster's `cpu_capacity` to automatically compute capacity_weight — no manual core architecture configuration needed. |
 | **Smart Screen-Off Power Saving** | Auto-enters Doze mode when screen is off with CLG forced into extreme power-saving configuration; auto-restores on screen on. |
-| **Temperature-Aware Throttling** | Real-time CPU temperature monitoring; limits FAS performance ceiling when threshold is exceeded. |
+| **Temperature-Aware Throttling** | Real-time CPU temperature monitoring; caps the FAS performance ceiling after two consecutive samples exceed the threshold (0 = disabled). |
 | **I/O Scheduler Optimization** | Iterates over all block devices with customizable I/O schedulers, read-ahead size, merge policy, and iostats parameters. |
 | **Screen State Detection** | Monitors power/backlight events via Netlink uevent — zero-polling screen on/off detection. |
 | **Foreground App Detection** | Reads `top-app` cgroup process list with non-blocking debounce; automatically filters IMEs and system processes. |
@@ -293,13 +293,13 @@ This section defines the basic behavior of the daemon.
 ```yaml
 meta:
   loglevel: "INFO"
-  language: "en"
+  language: "zh"
 ```
 
 | Field | Type | Description |
 | :--- | :--- | :--- |
 | `loglevel` | string | Log level detail. Options: `DEBUG`, `INFO`, `WARN`, `ERROR`. Supports runtime hot-update. |
-| `language` | string | Daemon log language. Currently supports `en` (English) and `zh` (Chinese). Supports runtime hot-switch. |
+| `language` | string | Daemon log language. Currently supports `en` (English) and `zh` (Chinese); defaults to `zh`. Supports runtime hot-switch. |
 
 #### 2️⃣ Function Toggles (`function`)
 
@@ -499,6 +499,14 @@ Attached to a `libgui.so` frame submission function (uprobe), triggered on every
 3.  **Access the WebUI** — Once the module starts, open the WebUI in your browser to manage and configure settings.
 4.  **Configure Rules** — Set performance strategies for different apps as needed.
 
+> **Upgrade note**: Flashing over an older version preserves the existing `config/config.yaml` and `rules.yaml`, so your settings carry over.
+
+### Building and self-testing (optional)
+
+  * **On-device build (Android)**: `./scripts/build-local.sh` (requires the "Rust" toolkit module in the app and bpf-linker 0.11.1)
+  * **Linux / CI cross-build**: `cargo xtask build`
+  * **Post-flash self-check**: `sh scripts/device-smoke.sh` (read-only); deeper check `sh scripts/device-selftest.sh --yes` (briefly stops the daemon and temporarily edits configs, restoring them afterwards)
+
 ## 🚀 Performance Optimization Suggestions
 
 ### Daily Use
@@ -579,7 +587,7 @@ Attached to a `libgui.so` frame submission function (uprobe), triggered on every
 
 <div align="center">
 
-<sub>📅 Document Updated: March 11, 2026</sub><br>
+<sub>📅 Document Updated: November 23, 2026</sub><br>
 <sub>🚀 yumi — Giving every Android device the best performance experience</sub>
 
 </div>

@@ -1,5 +1,26 @@
 # 🚀 更新日志 | Changelog
 
+## 🚧 未发布 (Unreleased)
+
+### 🔒 修复 (Fixes)
+* **[Core]** 异常退出（被强杀 / 掉电）后自动恢复接管前的 CPU governor 与频率；正常停止、SIGTERM/SIGINT 与卸载脚本也会恢复
+* **[Core]** 监控线程失败后按 1s→30s 退避重试，不再一次错误就永久停摆
+* **[Core]** `rules.yaml` 改为监听所在目录，兼容编辑器的原子替换保存
+* **[Core]** `config.yaml` / `rules.yaml` 解析失败会记录明确错误日志
+* **[FAS]** 温度封顶真正生效（默认关闭），连续两次采样超阈值才触发，单次异常读数不会误降频
+* **[WebUI]** 写配置改走 base64 传参，杜绝 shell 解释与命令注入
+* **[WebUI]** 日志页先做 HTML 转义再高亮，修复日志内容注入
+* **[WebUI]** 规则读取失败时拒绝回写，避免 `rules.yaml` 被整体覆盖
+* **[Module]** `disable_boost.sh` 默认拒绝执行，需显式设置 `YUMI_ALLOW_THERMAL_DISABLE=1`
+
+### ⚙️ 工程 (Engineering)
+* 默认日志语言改为中文
+* CI 增加 WebUI 类型检查；TypeScript 降至 5.9 以兼容 `vue-tsc`
+* 清理未使用的翻译键、死代码与 lodash 依赖
+* 刷入升级时保留用户已有的 `config.yaml` 与 `rules.yaml`
+* 新增本机构建脚本 `scripts/build-local.sh` 与真机自检脚本
+* u32 乘法改饱和运算，路径转 UTF-8 与 eBPF panic 路径加固
+
 ## 📦 v2.0.2
 
 ### 🎯 新增 (New Features)
