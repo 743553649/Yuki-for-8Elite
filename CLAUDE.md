@@ -78,8 +78,8 @@ npm run test         # Vitest 单元测试
 npm run build        # 产出 dist/，由 xtask 拷进 webroot/
 ```
 
-CI 在打包前依次执行：`cargo fmt --check`、`cargo clippy -D warnings`、WebUI `type-check/lint/format:check/test`、`npm audit`、`cargo test`。
-每周还有 `security-audit.yml` 定时跑 `cargo audit` 与 `npm audit`。
+GitHub Actions 只保留一个**手动触发**的构建工作流（`.github/workflows/build.yml`，`workflow_dispatch`），用于在需要时产出一个模块 zip；不再自动发布、不跑 lint/审计。
+日常开发用 `scripts/build-local.sh`，它会跑 WebUI 类型检查、Rust 测试与打包；`cargo fmt/clippy`、ESLint/Prettier/Vitest 作为本地工具按需手动执行。
 
 ## 架构
 
@@ -140,9 +140,9 @@ CI 在打包前依次执行：`cargo fmt --check`、`cargo clippy -D warnings`�
 
 - `xtask/src/main.rs` 负责编译 WebUI / 核心并打 zip；zip 名中的数字是 `git rev-list --count HEAD`
 - `scripts/build-local.sh` 是本机构建入口；`module/customize.sh` 在升级安装时保留旧模块的 `config.yaml` 与 `rules.yaml`
-- `origin` 是自己的仓库 `743553649/Yuki-for-8Elite`，`upstream` 是 `imacte/yumi`；同步上游用 `git fetch upstream && git merge upstream/main`
-- 发版时同步 `Cargo.toml`、`module/module.prop`、`updateInformation/update.json` 三处版本号；正式版 Release 会额外上传固定名称 `yumi-latest.zip`，供 `update.json` 的 `releases/latest/download/yumi-latest.zip` 使用
-- `.github/workflows/build.yml`：推 `main` 自动发布预发行版（标签 `yumi-v<版本>-pre.<run_number>`，指向本次提交）；推送版本标签发布正式版，且标签版本必须与 `Cargo.toml` 的 `version` 完全一致；PR 只产出 artifact
+- `origin` 是自己的仓库 `743553649/Yuki-for-8Elite`（个人自用备份），`upstream` 是 `imacte/yumi`；默认**不合并上游**，只在需要某个安全修复时手动挑选
+- 仓库不发布正式版、不做更新检查：`module/module.prop` 已移除 `updateJson`，`updateInformation/update.json` 已删除
+- `.github/workflows/build.yml` 仅手动触发（`workflow_dispatch`），用于产出一个模块 zip；没有自动发布、定时审计或 Dependabot
 - 正式发版时同步更新 `updateInformation/update.json` 的 `version` / `versionCode` / `zipUrl` 与 `module/module.prop`；当前版本号在 `Cargo.toml`
 
 ## 注意事项

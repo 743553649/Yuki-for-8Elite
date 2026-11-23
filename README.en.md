@@ -496,7 +496,7 @@ Attached to a `libgui.so` frame submission function (uprobe), triggered on every
 
 ### Installation Steps
 
-1.  **Download the Module** — Download the latest release from the [Releases](https://github.com/743553649/Yuki-for-8Elite/releases) page.
+1.  **Get the Module** — This is a personal fork without official releases; build the zip locally with `./scripts/build-local.sh`, or run the GitHub Actions build manually and download the artifact.
 2.  **Flash the Module** — Flash the yumi module via Magisk / KernelSU.
 3.  **Access the WebUI** — Once the module starts, open the WebUI in your browser to manage and configure settings.
 4.  **Configure Rules** — Set performance strategies for different apps as needed.

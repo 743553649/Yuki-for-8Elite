@@ -112,26 +112,25 @@ SHA256：`86fc6aeefd751fbd286274b135464a22e84d65b2c3cced226382c23e1799cef9`
 - [x] 配置结构版本：`config.yaml` / `rules.yaml` 增加 `schema_version`，旧规则自动迁移；新增迁移单测
 - [ ] 待办：首次在 GitHub Actions 上确认新增门禁与审计工作流通过（本机无法完整模拟 runner）
 
-## 发布与运维（2026-11-23 起）
+## 仓库定位调整（2026-11-23）
 
-- [x] 自有远端：`origin` = `git@github.com:743553649/Yuki-for-8Elite.git`，原上游保留为 `upstream`
-- [x] 首次推送 `main`（合并远端 Initial commit，产生合并提交 `36383cd`）
-- [ ] 确认首次 CI 结果（仓库为私有，未登录的 API 读不到 Actions；需在 Actions 页面查看或配置 gh 登录）
-- [x] GitHub 仓库设置：Workflow permissions 已改为 Read and write
-- [x] 发布元数据切到自有仓库：`module.prop`、`update.json`、README 中英文链接、WebUI 仓库链接
-- [x] 版本号改为 `0.1.0`（`versionCode=100`），changelog 增加独立版本起点说明
-- [x] 正式版工作流额外上传固定名称 `yumi-latest.zip`，`update.json` 指向 `releases/latest/download/yumi-latest.zip`
+仓库定位：**个人自用备份**，不做公开发布与项目运营。
+
+- [x] `origin` = `743553649/Yuki-for-8Elite`，`upstream` = `imacte/yumi`（默认不合并上游）
+- [x] 移除 Dependabot 配置，并删除其自动创建的分支 / PR
+- [x] 删除 `security-audit.yml`；`build.yml` 精简为**仅手动触发**的构建（`workflow_dispatch`），不再自动发布
+- [x] 移除 `module.prop` 的 `updateJson`，删除 `updateInformation/update.json`：模块管理器不再检查更新
+- [x] 版本号保留 `0.1.0`（仅作标识，不发布正式版；手机为 `20002`，本版本需手动刷入）
 - [x] 清理已合并分支 `feat/p0-engineering`、`fix/safety-and-cleanup`
-- [ ] 打包并刷入包含温度防抖、schema 迁移、配置保留的新包（等用户指令），执行 `scripts/device-smoke.sh` 与 `scripts/device-selftest.sh --yes`
-- [ ] 首个正式版：推送 `v0.1.0` 标签才会生成 latest Release；在此之前 `update.json` 的下载地址会 404
-- [ ] 注意：当前手机 `versionCode=20002` 高于 `100`，模块管理器不会自动提示更新，首次需手动刷入 0.1.0
-- [ ] 决定上游同步策略：是否定期 `git fetch upstream && git merge upstream/main`
 
-### 长期（P2，未开始）
+### 唯一还相关的待办
 
-- [ ] 崩溃/诊断采集：一键收集机型、内核、模块版本与最近日志
-- [ ] 兼容性矩阵文档：机型 / Android 版本 / 探针符号 / 温控路径
-- [ ] 发布手册与 `CONTRIBUTING.md`：打 tag、回滚、热修流程
-- [ ] Issue 流程：启用 `.scratch/` 或配置 GitHub Issue 模板
-- [ ] 建立 `GLOSSARY.md` 与 `docs/adr/`（约定已写在 `docs/agents/domain.md`）
-- [ ] WebUI 组件级测试（当前只有纯函数单测）
+- [ ] 下次想用新功能时：`./scripts/build-local.sh` 生成 zip → 刷入 → 跑 `scripts/device-smoke.sh`（可选 `device-selftest.sh --yes`）
+      重点确认：旧 `rules.yaml` 的 `schema_version` 自动迁移、温度防抖、再次刷入时配置保留
+
+### 明确不做（需要时再启用）
+
+- 上游定期同步（有安全修复时手动挑选即可）
+- 正式版发布、tag、Release、自动更新通道
+- CI 的 lint/审计门禁（本地工具按需手动跑：`cargo fmt/clippy`、`npm run lint/format:check/test`）
+- P2：诊断采集、兼容性矩阵、CONTRIBUTING/发布手册、Issue 模板、GLOSSARY/ADR、WebUI 组件测试

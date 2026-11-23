@@ -496,7 +496,7 @@ yumi 使用两个 eBPF 探针进行内核级数据采集：
 
 ### 安装步骤
 
-1.  **下载模块** - 从 [Releases](https://github.com/743553649/Yuki-for-8Elite/releases) 下载最新版本。
+1.  **获取模块** - 本项目为个人自用分支，不发布正式版；用 `./scripts/build-local.sh` 在本地生成 zip，或在 GitHub Actions 里手动运行构建并下载产物。
 2.  **刷入模块** - 通过 Magisk / KernelSU 刷入 yumi 模块。
 3.  **访问 WebUI** - 模块启动后，通过浏览器访问 WebUI 进行管理和配置。
 4.  **配置规则** - 根据需要为不同应用设置性能策略。
