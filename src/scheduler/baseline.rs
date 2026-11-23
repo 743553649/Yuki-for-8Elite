@@ -28,6 +28,7 @@ use log::{info, warn};
 use std::fs;
 use std::path::PathBuf;
 
+use super::cpufreq::FrequencyRange;
 use crate::common;
 
 const HEADER: &str = "# yumi cpu baseline v1";
@@ -178,19 +179,56 @@ fn restore_policy(policy: &PolicyBaseline) -> bool {
         return true;
     }
 
+    // 旧快照可能是系统把簇钉在单一频点时记下的（min == max）。
+    // 直接恢复会让手机永久停在受限值，所以改用该簇的完整可用区间。
+    let (mut min, mut max) = (policy.min, policy.max);
+    if min == max
+        && let Some(available) = read_available_range(&base)
+    {
+        warn!(
+            "[Baseline] policy{} 快照是固定频点 {} kHz（可能来自开机/省电状态），改用可用区间 {}-{} kHz",
+            policy.id, min, available.min, available.max
+        );
+        min = available.min;
+        max = available.max;
+    }
+
     // 先放宽上限再调整下限：即使当前下限高于原始上限，也不会出现 min>max 的中间态
-    let max_write = fs::write(base.join("scaling_max_freq"), format!("{}\n", policy.max));
+    let max_write = fs::write(base.join("scaling_max_freq"), format!("{max}\n"));
     if max_write.is_err() {
-        let _ = fs::write(base.join("scaling_min_freq"), format!("{}\n", policy.min));
-        let _ = fs::write(base.join("scaling_max_freq"), format!("{}\n", policy.max));
+        let _ = fs::write(base.join("scaling_min_freq"), format!("{min}\n"));
+        let _ = fs::write(base.join("scaling_max_freq"), format!("{max}\n"));
     } else {
-        let _ = fs::write(base.join("scaling_min_freq"), format!("{}\n", policy.min));
+        let _ = fs::write(base.join("scaling_min_freq"), format!("{min}\n"));
     }
     fs::write(
         base.join("scaling_governor"),
         format!("{}\n", policy.governor),
     )
     .is_ok()
+}
+
+/// 读取 policy 的完整可用频率范围（包含 boost 频点）
+fn read_available_range(base: &std::path::Path) -> Option<FrequencyRange> {
+    let mut frequencies: Vec<u32> = fs::read_to_string(base.join("scaling_available_frequencies"))
+        .ok()?
+        .split_whitespace()
+        .filter_map(|freq| freq.parse::<u32>().ok().filter(|&freq| freq > 0))
+        .collect();
+    if let Ok(boost) = fs::read_to_string(base.join("scaling_boost_frequencies")) {
+        frequencies.extend(
+            boost
+                .split_whitespace()
+                .filter_map(|freq| freq.parse::<u32>().ok().filter(|&freq| freq > 0)),
+        );
+    }
+    if frequencies.is_empty() {
+        return None;
+    }
+    Some(FrequencyRange {
+        min: *frequencies.iter().min()?,
+        max: *frequencies.iter().max()?,
+    })
 }
 
 /// 正常退出且恢复成功后调用

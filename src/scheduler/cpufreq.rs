@@ -58,6 +58,16 @@ fn nearest_index(frequencies: &[u32], perf: f32) -> usize {
     }
 }
 
+/// 开机或系统省电时，某个簇可能被钉在单一频点（min == max）。
+/// 把它当成"原始状态"会让恢复永久停在受限值，所以此时改用该簇的完整可用区间。
+fn sanitize_original(original: FrequencyRange, available: FrequencyRange) -> FrequencyRange {
+    if original.min == original.max && available.min < available.max {
+        available
+    } else {
+        original
+    }
+}
+
 fn frequency_range(frequencies: &[u32], perf: f32, floor: f32, steps_below: u32) -> FrequencyRange {
     let high = nearest_index(frequencies, perf);
     let low = high
@@ -120,6 +130,17 @@ impl PolicyFrequency {
             warn!("[CPUFreq] Cannot snapshot governor and limits for policy{id}");
             return None;
         };
+        let available = FrequencyRange {
+            min: frequencies[0],
+            max: *frequencies.last().unwrap(),
+        };
+        if original.min == original.max {
+            warn!(
+                "[CPUFreq] policy{id} 当前频率被固定在 {} kHz（可能来自开机/省电状态），按可用区间 {}-{} kHz 记录原始状态",
+                original.min, available.min, available.max
+            );
+        }
+        let original = sanitize_original(original, available);
 
         Some(Self {
             id,
@@ -268,7 +289,25 @@ impl PolicyFrequency {
 
 #[cfg(test)]
 mod tests {
-    use super::{FrequencyRange, frequency_range};
+    use super::{FrequencyRange, frequency_range, sanitize_original};
+
+    #[test]
+    fn pinned_snapshot_falls_back_to_available_range() {
+        let available = FrequencyRange {
+            min: 384_000,
+            max: 3_532_800,
+        };
+        let pinned = FrequencyRange {
+            min: 1_152_000,
+            max: 1_152_000,
+        };
+        assert_eq!(sanitize_original(pinned, available), available);
+        let normal = FrequencyRange {
+            min: 384_000,
+            max: 3_000_000,
+        };
+        assert_eq!(sanitize_original(normal, available), normal);
+    }
 
     #[test]
     fn range_uses_available_steps_and_honors_floor() {

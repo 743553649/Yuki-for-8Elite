@@ -205,7 +205,7 @@ if [ -n "${YUMI_TEST_GAME:-}" ]; then
     mv -f "$M/.rules.test" "$M/rules.yaml"
     sleep 2
     monkey -p "$YUMI_TEST_GAME" -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1 &
-    if wait_log '温度封顶|capping perf at' "$OFF" 30; then
+    if wait_log '性能封顶|温度封顶|capping perf' "$OFF" 30; then
         ok "超过阈值后触发封顶"
     else
         skip "未观察到封顶（游戏可能没有产生帧）"
