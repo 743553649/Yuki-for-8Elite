@@ -15,29 +15,31 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use std::sync::{Arc, Mutex, RwLock, mpsc};
+use anyhow::Result;
+use std::fs;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, RwLock, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
-use std::fs;
-use anyhow::Result;
 
-pub mod config;
-pub mod scheduler;
-pub mod fas;
-pub mod cpu_load_governor;
 pub mod baseline;
+pub mod config;
+pub mod cpu_load_governor;
 mod cpufreq;
+pub mod fas;
 mod monitor_health;
+// 模块名与父模块同名是既有结构（CpuScheduler 所在文件）；重命名会打散大量引用，显式允许
+#[allow(clippy::module_inception)]
+pub mod scheduler;
 
-use crate::i18n::{t, load_language, t_with_args};
-use crate::fluent_args; 
-use crate::utils; 
-use crate::common::DaemonEvent; 
+use crate::common;
+use crate::common::DaemonEvent;
+use crate::fluent_args;
+use crate::i18n::{load_language, t, t_with_args};
+use crate::logger;
+use crate::utils;
 use config::Config;
 use scheduler::CpuScheduler;
-use crate::logger;
-use crate::common;
 
 /// CPU 频率策略簇信息
 pub struct CpuPolicy {
@@ -51,16 +53,15 @@ pub fn get_cpu_policies() -> Vec<CpuPolicy> {
     let mut policies = Vec::new();
     if let Ok(entries) = std::fs::read_dir("/sys/devices/system/cpu/cpufreq") {
         for entry in entries.flatten() {
-            if let Some(name) = entry.file_name().to_str() {
-                if name.starts_with("policy") {
-                    if let Ok(pid) = name["policy".len()..].parse::<i32>() {
-                        let boost_freqs = read_boost_frequencies(pid);
-                        policies.push(CpuPolicy {
-                            id: pid,
-                            boost_frequencies: boost_freqs,
-                        });
-                    }
-                }
+            if let Some(name) = entry.file_name().to_str()
+                && name.starts_with("policy")
+                && let Ok(pid) = name["policy".len()..].parse::<i32>()
+            {
+                let boost_freqs = read_boost_frequencies(pid);
+                policies.push(CpuPolicy {
+                    id: pid,
+                    boost_frequencies: boost_freqs,
+                });
             }
         }
     }
@@ -82,28 +83,54 @@ fn read_boost_frequencies(pid: i32) -> Vec<u32> {
 
 /// 通过 sysfs 探测指定 policy 的 capacity 值
 pub(super) fn probe_policy_capacity(policy_id: i32) -> Option<u32> {
-    let related_str = fs::read_to_string(
-        format!("/sys/devices/system/cpu/cpufreq/policy{}/related_cpus", policy_id))
-        .or_else(|_| fs::read_to_string(
-            format!("/sys/devices/system/cpu/cpufreq/policy{}/affected_cpus", policy_id)))
-        .ok()?;
+    let related_str = fs::read_to_string(format!(
+        "/sys/devices/system/cpu/cpufreq/policy{}/related_cpus",
+        policy_id
+    ))
+    .or_else(|_| {
+        fs::read_to_string(format!(
+            "/sys/devices/system/cpu/cpufreq/policy{}/affected_cpus",
+            policy_id
+        ))
+    })
+    .ok()?;
     let first_cpu: u32 = related_str.split_whitespace().next()?.parse().ok()?;
-    fs::read_to_string(format!("/sys/devices/system/cpu/cpu{}/cpu_capacity", first_cpu))
-        .ok()?.trim().parse::<u32>().ok()
+    fs::read_to_string(format!(
+        "/sys/devices/system/cpu/cpu{}/cpu_capacity",
+        first_cpu
+    ))
+    .ok()?
+    .trim()
+    .parse::<u32>()
+    .ok()
 }
 
 /// 根据 CPU capacity 自动计算每个 cluster 的权重
 pub(super) fn auto_compute_capacity_weights(policies: &[CpuPolicy]) -> Option<Vec<(i32, f32)>> {
-    let caps: Vec<(i32, u32)> = policies.iter()
+    let caps: Vec<(i32, u32)> = policies
+        .iter()
         .filter(|p| p.id != -1)
         .filter_map(|p| probe_policy_capacity(p.id).map(|c| (p.id, c)))
         .collect();
-    if caps.is_empty() || caps.iter().any(|&(_, c)| c == 0) { return None; }
+    if caps.is_empty() || caps.iter().any(|&(_, c)| c == 0) {
+        return None;
+    }
     let min_cap = caps.iter().map(|&(_, c)| c).min().unwrap() as f32;
-    Some(caps.iter().map(|&(pid, cap)| {
-        let r = cap as f32 / min_cap;
-        (pid, if r <= 1.01 { 1.0 } else { 1.0 + (r - 1.0).sqrt() })
-    }).collect())
+    Some(
+        caps.iter()
+            .map(|&(pid, cap)| {
+                let r = cap as f32 / min_cap;
+                (
+                    pid,
+                    if r <= 1.01 {
+                        1.0
+                    } else {
+                        1.0 + (r - 1.0).sqrt()
+                    },
+                )
+            })
+            .collect(),
+    )
 }
 
 pub fn start_scheduler_thread(rx: mpsc::Receiver<DaemonEvent>) -> Result<thread::JoinHandle<()>> {
@@ -113,16 +140,23 @@ pub fn start_scheduler_thread(rx: mpsc::Receiver<DaemonEvent>) -> Result<thread:
 
     // 配置读不出来时仍要启动（否则守护进程直接挂掉），但必须留下日志，
     // 否则用户只会看到"调频参数不对"却不知道是配置坏了。
-    let (config, config_error) = Config::from_file_or_default(config_path.to_str().unwrap_or_default());
+    let (config, config_error) =
+        Config::from_file_or_default(config_path.to_str().unwrap_or_default());
     if let Some(error) = config_error {
-        log::error!("{}", t_with_args("config-load-failed", &fluent_args!(
-            "path" => config_path.display().to_string(),
-            "error" => error.to_string()
-        )));
+        log::error!(
+            "{}",
+            t_with_args(
+                "config-load-failed",
+                &fluent_args!(
+                    "path" => config_path.display().to_string(),
+                    "error" => error.to_string()
+                )
+            )
+        );
     }
 
     let shared_config = Arc::new(RwLock::new(config));
-    let shared_mode_name = Arc::new(Mutex::new("balance".to_string())); 
+    let shared_mode_name = Arc::new(Mutex::new("balance".to_string()));
     let sys_path_exist = Arc::new(utils::SysPathExist::new());
     let clg_config_changed = Arc::new(AtomicBool::new(false));
 
@@ -132,13 +166,19 @@ pub fn start_scheduler_thread(rx: mpsc::Receiver<DaemonEvent>) -> Result<thread:
     let config_clone = shared_config.clone();
     let sys_path_clone = sys_path_exist.clone();
     let config_changed = clg_config_changed.clone();
-    
+
     thread::Builder::new()
         .name("config_watcher".to_string())
         .spawn(move || {
             loop {
                 if let Err(e) = utils::watch_path(&config_dir) {
-                    log::error!("{}", t_with_args("config-watch-error", &fluent_args!("error" => e.to_string())));
+                    log::error!(
+                        "{}",
+                        t_with_args(
+                            "config-watch-error",
+                            &fluent_args!("error" => e.to_string())
+                        )
+                    );
                     // 退避后再重试，避免持续错误时忙循环刷 CPU
                     thread::sleep(std::time::Duration::from_secs(2));
                     continue;
@@ -146,28 +186,43 @@ pub fn start_scheduler_thread(rx: mpsc::Receiver<DaemonEvent>) -> Result<thread:
                 log::info!("{}", t("config-reloading"));
 
                 let old_lang = config_clone.read().unwrap().meta.language.clone();
-                
+
                 match Config::from_file(config_path.to_str().unwrap_or_default()) {
                     Ok(new_config) => {
                         logger::update_level(&new_config.meta.loglevel);
                         *config_clone.write().unwrap() = new_config;
                         config_changed.store(true, Ordering::Relaxed);
-                        
+
                         let new_lang = config_clone.read().unwrap().meta.language.clone();
-                        if old_lang != new_lang { load_language(&new_lang); }
+                        if old_lang != new_lang {
+                            load_language(&new_lang);
+                        }
 
                         log::info!("{}", t("config-reloaded-success"));
 
-                        let scheduler = CpuScheduler::new(config_clone.clone(), sys_path_clone.clone());
+                        let scheduler =
+                            CpuScheduler::new(config_clone.clone(), sys_path_clone.clone());
                         if let Err(e) = scheduler.apply_system_tweaks() {
-                            log::error!("{}", t_with_args("config-apply-tweaks-failed", &fluent_args!("error" => e.to_string())));
+                            log::error!(
+                                "{}",
+                                t_with_args(
+                                    "config-apply-tweaks-failed",
+                                    &fluent_args!("error" => e.to_string())
+                                )
+                            );
                         }
                     }
-                    Err(load_err) => log::error!("{}", t_with_args("config-reload-fail", &fluent_args!("error" => load_err.to_string()))),
+                    Err(load_err) => log::error!(
+                        "{}",
+                        t_with_args(
+                            "config-reload-fail",
+                            &fluent_args!("error" => load_err.to_string())
+                        )
+                    ),
                 }
             }
         })?;
-    
+
     log::info!("{}", t("main-config-watch-thread-create"));
 
     // ==========================================
@@ -180,15 +235,16 @@ pub fn start_scheduler_thread(rx: mpsc::Receiver<DaemonEvent>) -> Result<thread:
         .name("scheduler_ipc".to_string())
         .spawn(move || {
             log::info!("{}", t("scheduler-ipc-started"));
-            
+
             let root = common::get_module_root();
             let mode_file_path = root.join("current_mode.txt");
-            
+
             let mut fas_controller = crate::scheduler::fas::FasController::new();
             let mut cpu_governor = crate::scheduler::cpu_load_governor::CpuLoadGovernor::new();
 
             let rules_path = crate::monitor::config::get_rules_path();
-            let mut current_rules = crate::utils::read_config::<crate::monitor::config::RulesConfig, _>(&rules_path).unwrap_or_default();
+            let mut current_rules =
+                crate::monitor::config::read_rules(&rules_path).unwrap_or_default();
 
             let mut is_screen_on = true;
             let mut cpu_health = monitor_health::MonitorHealth::default();
@@ -201,9 +257,10 @@ pub fn start_scheduler_thread(rx: mpsc::Receiver<DaemonEvent>) -> Result<thread:
 
             let get_clg_cfg = |config: &Config, mode: &str| -> crate::scheduler::config::CpuLoadGovernorConfig {
                 config.get_mode(mode).map(|m| m.cpu_load_governor.clone()).unwrap_or_else(|| {
-                    let mut cfg = crate::scheduler::config::CpuLoadGovernorConfig::default();
-                    cfg.enabled = false;
-                    cfg
+                    crate::scheduler::config::CpuLoadGovernorConfig {
+                        enabled: false,
+                        ..Default::default()
+                    }
                 })
             };
 
@@ -284,9 +341,8 @@ pub fn start_scheduler_thread(rx: mpsc::Receiver<DaemonEvent>) -> Result<thread:
                             DaemonEvent::FrameUpdate { frame_delta_ns, pid, sampled_at } => {
                                 if is_screen_on && cpu_health.ready(now)
                                     && (1_000_000..=200_000_000).contains(&frame_delta_ns)
-                                {
-                                    if let Some((game_pid, package, temperature)) = &game {
-                                        if *game_pid > 0 && pid == *game_pid as u32 && fps_health.observe(sampled_at, now) {
+                                    && let Some((game_pid, package, temperature)) = &game
+                                        && *game_pid > 0 && pid == *game_pid as u32 && fps_health.observe(sampled_at, now) {
                                             if !fas_controller.is_active()
                                                 && !cpu_governor.restore_pending()
                                                 && !fas_controller.restore_pending()
@@ -306,8 +362,6 @@ pub fn start_scheduler_thread(rx: mpsc::Receiver<DaemonEvent>) -> Result<thread:
                                             }
                                             fas_controller.update_frame(frame_delta_ns);
                                         }
-                                    }
-                                }
                             }
                             DaemonEvent::CpuMonitorUnavailable => cpu_health.invalidate(),
                             DaemonEvent::FpsProbeUnavailable => fps_health.invalidate(),

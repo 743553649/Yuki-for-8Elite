@@ -15,22 +15,22 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use log::{error, info};
 use std::error::Error;
-use std::thread;
-use std::sync::{Arc, Mutex};
 use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::Sender;
+use std::sync::{Arc, Mutex};
+use std::thread;
 use std::time::{Duration, Instant};
-use log::{error, info};
 
 use crate::common;
 
-pub mod config;
 pub mod app_detect;
-pub mod screen_detect;
-pub mod fps_monitor;
+pub mod config;
 pub mod cpu_monitor;
+pub mod fps_monitor;
 mod sampling;
+pub mod screen_detect;
 
 use crate::common::DaemonEvent;
 use crate::fluent_args;
@@ -39,9 +39,13 @@ use crate::i18n::{t, t_with_args};
 // 启动函数
 pub fn start_monitor(tx: Sender<DaemonEvent>) -> Result<(), Box<dyn Error>> {
     info!("{}", t("monitor-starting"));
-    info!("[Main] kernel={}, page_size={}",
-        std::fs::read_to_string("/proc/sys/kernel/osrelease").unwrap_or_default().trim(),
-        unsafe { libc::sysconf(libc::_SC_PAGESIZE) });
+    info!(
+        "[Main] kernel={}, page_size={}",
+        std::fs::read_to_string("/proc/sys/kernel/osrelease")
+            .unwrap_or_default()
+            .trim(),
+        unsafe { libc::sysconf(libc::_SC_PAGESIZE) }
+    );
 
     // ===== 解除内核 eBPF Map 内存锁定限制 =====
     unsafe {
@@ -54,16 +58,21 @@ pub fn start_monitor(tx: Sender<DaemonEvent>) -> Result<(), Box<dyn Error>> {
             log::warn!("{}: {error}", t("monitor-rlimit-memlock-failed"));
         }
     }
-    
+
     // --- 初始化共享配置 ---
     let rules_path = config::get_rules_path();
-    
+
     // --- 初始化配置 ---
-    let initial_config = crate::utils::read_config(&rules_path) 
-                            .unwrap_or_else(|e| {
-                                log::warn!("{}", t_with_args("monitor-initial-config-failed", &fluent_args!("error" => e.to_string())));
-                                app_detect::get_default_rules()
-                            });
+    let initial_config = config::read_rules(&rules_path).unwrap_or_else(|e| {
+        log::warn!(
+            "{}",
+            t_with_args(
+                "monitor-initial-config-failed",
+                &fluent_args!("error" => e.to_string())
+            )
+        );
+        app_detect::get_default_rules()
+    });
 
     let config_arc = Arc::new(Mutex::new(initial_config));
     let config_arc_clone_for_watcher = Arc::clone(&config_arc);
@@ -81,8 +90,16 @@ pub fn start_monitor(tx: Sender<DaemonEvent>) -> Result<(), Box<dyn Error>> {
     thread::Builder::new()
         .name("screen_watcher".to_string())
         .spawn(move || {
-            if let Err(e) = screen_detect::monitor_screen_state_uevent(screen_state_clone_for_watcher) {
-                error!("{}", t_with_args("monitor-screen-watcher-failed", &fluent_args!("error" => e.to_string())));
+            if let Err(e) =
+                screen_detect::monitor_screen_state_uevent(screen_state_clone_for_watcher)
+            {
+                error!(
+                    "{}",
+                    t_with_args(
+                        "monitor-screen-watcher-failed",
+                        &fluent_args!("error" => e.to_string())
+                    )
+                );
             }
         })?;
 
@@ -94,9 +111,15 @@ pub fn start_monitor(tx: Sender<DaemonEvent>) -> Result<(), Box<dyn Error>> {
             if let Err(e) = app_detect::watch_config_file(
                 config_arc_clone_for_watcher,
                 force_refresh_clone_for_watcher,
-                tx_config
+                tx_config,
             ) {
-                error!("{}", t_with_args("monitor-config-watcher-failed", &fluent_args!("error" => e.to_string())));
+                error!(
+                    "{}",
+                    t_with_args(
+                        "monitor-config-watcher-failed",
+                        &fluent_args!("error" => e.to_string())
+                    )
+                );
             }
         })?;
 
@@ -108,22 +131,36 @@ pub fn start_monitor(tx: Sender<DaemonEvent>) -> Result<(), Box<dyn Error>> {
         .spawn(move || {
             let mut backoff = Duration::from_secs(1);
             loop {
-                if common::shutdown_requested() { break; }
+                if common::shutdown_requested() {
+                    break;
+                }
                 let started = Instant::now();
                 match fps_monitor::start_fps_loop(tx_fps.clone()) {
                     Ok(()) => break, // 通道关闭等正常退出
                     Err(e) => {
-                        error!("{}", t_with_args("monitor-fps-crashed", &fluent_args!("error" => format!("{e:#}"))));
+                        error!(
+                            "{}",
+                            t_with_args(
+                                "monitor-fps-crashed",
+                                &fluent_args!("error" => format!("{e:#}"))
+                            )
+                        );
                         // 立刻通知调度器释放频率，避免拿着失效数据继续调频
                         let _ = tx_fps.send(DaemonEvent::FpsProbeUnavailable);
                         // 上一轮稳定跑过 60 秒说明恢复有效，退避从 1 秒重新开始
                         if started.elapsed() >= Duration::from_secs(60) {
                             backoff = Duration::from_secs(1);
                         }
-                        error!("{}", t_with_args("monitor-fps-retrying", &fluent_args!(
-                            "secs" => backoff.as_secs().to_string(),
-                            "error" => format!("{e:#}")
-                        )));
+                        error!(
+                            "{}",
+                            t_with_args(
+                                "monitor-fps-retrying",
+                                &fluent_args!(
+                                    "secs" => backoff.as_secs().to_string(),
+                                    "error" => format!("{e:#}")
+                                )
+                            )
+                        );
                         common::sleep_interruptible(backoff);
                         backoff = (backoff * 2).min(Duration::from_secs(30));
                     }
@@ -139,7 +176,9 @@ pub fn start_monitor(tx: Sender<DaemonEvent>) -> Result<(), Box<dyn Error>> {
         .spawn(move || {
             let mut backoff = Duration::from_secs(1);
             loop {
-                if common::shutdown_requested() { break; }
+                if common::shutdown_requested() {
+                    break;
+                }
                 let started = Instant::now();
                 let result: anyhow::Result<()> = (|| {
                     let runtime = tokio::runtime::Runtime::new()
@@ -149,15 +188,27 @@ pub fn start_monitor(tx: Sender<DaemonEvent>) -> Result<(), Box<dyn Error>> {
                 match result {
                     Ok(()) => break,
                     Err(e) => {
-                        error!("{}", t_with_args("monitor-cpu-crashed", &fluent_args!("error" => format!("{e:#}"))));
+                        error!(
+                            "{}",
+                            t_with_args(
+                                "monitor-cpu-crashed",
+                                &fluent_args!("error" => format!("{e:#}"))
+                            )
+                        );
                         let _ = tx_cpu.send(DaemonEvent::CpuMonitorUnavailable);
                         if started.elapsed() >= Duration::from_secs(60) {
                             backoff = Duration::from_secs(1);
                         }
-                        error!("{}", t_with_args("monitor-cpu-retrying", &fluent_args!(
-                            "secs" => backoff.as_secs().to_string(),
-                            "error" => format!("{e:#}")
-                        )));
+                        error!(
+                            "{}",
+                            t_with_args(
+                                "monitor-cpu-retrying",
+                                &fluent_args!(
+                                    "secs" => backoff.as_secs().to_string(),
+                                    "error" => format!("{e:#}")
+                                )
+                            )
+                        );
                         common::sleep_interruptible(backoff);
                         backoff = (backoff * 2).min(Duration::from_secs(30));
                     }
@@ -171,7 +222,7 @@ pub fn start_monitor(tx: Sender<DaemonEvent>) -> Result<(), Box<dyn Error>> {
         config_arc,
         screen_state_clone_for_app_detect,
         force_refresh_arc,
-        tx
+        tx,
     )?;
 
     Ok(())
@@ -181,7 +232,11 @@ pub fn start_monitor(tx: Sender<DaemonEvent>) -> Result<(), Box<dyn Error>> {
 mod tests {
     #[test]
     fn compiled_probes_have_independent_maps_and_programs() {
-        let cpu = aya_obj::Object::parse(aya::include_bytes_aligned!(concat!(env!("OUT_DIR"), "/cpu.ebpf"))).unwrap();
+        let cpu = aya_obj::Object::parse(aya::include_bytes_aligned!(concat!(
+            env!("OUT_DIR"),
+            "/cpu.ebpf"
+        )))
+        .unwrap();
         assert!(cpu.programs.contains_key("handle_sched_switch"));
         assert!(!cpu.programs.contains_key("handle_frame"));
         assert!(cpu.maps.contains_key("CORE_IDLE_TIME"));
@@ -189,8 +244,16 @@ mod tests {
         assert!(!cpu.maps.contains_key("FRAME_EVENTS"));
 
         for (bytes, map, other) in [
-            (aya::include_bytes_aligned!(concat!(env!("OUT_DIR"), "/fps-ring.ebpf")), "RING_BUF", "FRAME_EVENTS"),
-            (aya::include_bytes_aligned!(concat!(env!("OUT_DIR"), "/fps-perf.ebpf")), "FRAME_EVENTS", "RING_BUF"),
+            (
+                aya::include_bytes_aligned!(concat!(env!("OUT_DIR"), "/fps-ring.ebpf")),
+                "RING_BUF",
+                "FRAME_EVENTS",
+            ),
+            (
+                aya::include_bytes_aligned!(concat!(env!("OUT_DIR"), "/fps-perf.ebpf")),
+                "FRAME_EVENTS",
+                "RING_BUF",
+            ),
         ] {
             let fps = aya_obj::Object::parse(bytes).unwrap();
             assert!(fps.programs.contains_key("handle_frame"));

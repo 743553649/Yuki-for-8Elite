@@ -43,6 +43,10 @@ fn build_ebpf() -> Result<(), Box<dyn Error>> {
         ])
         .arg(&target)
         .current_dir(&manifest)
+        // 外层如果由 clippy 驱动（RUSTC_WRAPPER=clippy-driver），嵌套构建也会继承它，
+        // 导致 no_std 的 eBPF 探针被 clippy-driver 编译而失败；这里强制回到普通 rustc。
+        .env_remove("RUSTC_WRAPPER")
+        .env_remove("RUSTC_WORKSPACE_WRAPPER")
         .env_remove("CARGO_ENCODED_RUSTFLAGS")
         .env_remove("RUSTFLAGS")
         .status()?;

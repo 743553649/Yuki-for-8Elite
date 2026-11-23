@@ -1,3 +1,6 @@
+# 规则结构版本（缺失按 0 处理并自动迁移）
+schema_version: 1
+
 yumi_scheduler: true
 dynamic_enabled: true
 global_mode: "powersave"

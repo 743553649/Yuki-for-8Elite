@@ -17,11 +17,11 @@
 
 use crate::fas_types::{FasRulesConfig, PerAppProfile};
 use crate::scheduler::cpufreq::PolicyFrequency;
-use std::time::Instant;
 use log::{info, warn};
+use std::time::Instant;
 
-use crate::i18n::t_with_args;
 use crate::fluent_args;
+use crate::i18n::t_with_args;
 
 use super::fps_window::FpsWindow;
 use super::pid::{PidController, fps_norm};
@@ -40,10 +40,11 @@ const TEMP_CONFIRM_SAMPLES: u32 = 2;
 /// - 开启：需要连续 TEMP_CONFIRM_SAMPLES 次 temp >= 阈值
 /// - 解除：temp <= 阈值 - 回差，立即生效（保护优先）
 fn temp_throttle_next(temp: f64, threshold: f64, active: bool, hot_samples: u32) -> (bool, u32) {
-    if !(threshold > 0.0) {
+    // 显式处理 NaN：配置或传感器给出非有限值时按"未启用/无读数"处理
+    if threshold.is_nan() || threshold <= 0.0 {
         return (false, 0);
     }
-    if !(temp > 0.0) {
+    if temp.is_nan() || temp <= 0.0 {
         return (active, hot_samples);
     }
     if active {
@@ -233,7 +234,11 @@ impl FasController {
             self.ema_fg_util = fg_util;
         } else {
             // Rise fast (alpha=0.4), fall slow (alpha=0.15) to prevent transient lows from killing freq
-            let alpha = if fg_util > self.ema_fg_util { 0.40 } else { 0.15 };
+            let alpha = if fg_util > self.ema_fg_util {
+                0.40
+            } else {
+                0.15
+            };
             self.ema_fg_util = self.ema_fg_util * (1.0 - alpha) + fg_util * alpha;
         }
     }
@@ -271,13 +276,19 @@ impl FasController {
     }
 
     pub(super) fn next_gear(&self) -> Option<f32> {
-        self.fps_gears.iter().copied()
-            .filter(|&g| g > self.current_target_fps + 0.5).reduce(f32::min)
+        self.fps_gears
+            .iter()
+            .copied()
+            .filter(|&g| g > self.current_target_fps + 0.5)
+            .reduce(f32::min)
     }
 
     pub(super) fn prev_gear(&self) -> Option<f32> {
-        self.fps_gears.iter().copied()
-            .filter(|&g| g < self.current_target_fps - 0.5).reduce(f32::max)
+        self.fps_gears
+            .iter()
+            .copied()
+            .filter(|&g| g < self.current_target_fps - 0.5)
+            .reduce(f32::max)
     }
 
     pub(super) fn max_gear(&self) -> f32 {
@@ -305,7 +316,9 @@ impl FasController {
     ///
     /// 效果：GPU bound 场景自动放宽帧率目标，减少无效拉频
     pub(super) fn adjust_target_for_util(&mut self) {
-        if self.util_sample_timer.elapsed().as_millis() < 1000 { return; }
+        if self.util_sample_timer.elapsed().as_millis() < 1000 {
+            return;
+        }
         self.util_sample_timer = Instant::now();
 
         // jank_cooldown 期间禁止降低 target，只允许恢复
@@ -337,27 +350,45 @@ impl FasController {
         self.current_package = package.to_string();
         let profile = self.cfg.per_app_profiles.get(package).cloned();
         if let Some(ref p) = profile {
-            if let Some(m) = p.fps_margin { self.fps_margin = m; }
-            if let Some(ref gears) = p.target_fps {
-                if !gears.is_empty() {
-                    self.fps_gears = gears.clone();
-                    if !self.fps_gears.iter().any(|&g| (g - self.current_target_fps).abs() < 0.5) {
-                        self.current_target_fps = self.fps_gears.iter().copied()
-                            .fold(60.0_f32, f32::max);
-                    }
-                    self.refresh_cached_values();
-                }
+            if let Some(m) = p.fps_margin {
+                self.fps_margin = m;
             }
-            info!("{}", t_with_args("fas-set-game", &fluent_args!(
-                "pkg" => package,
-                "gears" => format!("{:?}", self.fps_gears),
-                "target" => format!("{:.0}", self.current_target_fps)
-            )));
+            if let Some(ref gears) = p.target_fps
+                && !gears.is_empty()
+            {
+                self.fps_gears = gears.clone();
+                if !self
+                    .fps_gears
+                    .iter()
+                    .any(|&g| (g - self.current_target_fps).abs() < 0.5)
+                {
+                    self.current_target_fps =
+                        self.fps_gears.iter().copied().fold(60.0_f32, f32::max);
+                }
+                self.refresh_cached_values();
+            }
+            info!(
+                "{}",
+                t_with_args(
+                    "fas-set-game",
+                    &fluent_args!(
+                        "pkg" => package,
+                        "gears" => format!("{:?}", self.fps_gears),
+                        "target" => format!("{:.0}", self.current_target_fps)
+                    )
+                )
+            );
         } else {
-            warn!("{}", t_with_args("fas-no-profile", &fluent_args!(
-                "pkg" => package,
-                "gears" => format!("{:?}", self.fps_gears)
-            )));
+            warn!(
+                "{}",
+                t_with_args(
+                    "fas-no-profile",
+                    &fluent_args!(
+                        "pkg" => package,
+                        "gears" => format!("{:?}", self.fps_gears)
+                    )
+                )
+            );
         }
         self.active_profile = profile;
     }
@@ -383,7 +414,7 @@ impl FasController {
     pub fn set_temp_threshold(&mut self, thresh: f64) {
         self.temp_threshold = thresh;
         // 阈值改成 0 表示关闭功能：立即解除封顶
-        if !(thresh > 0.0) {
+        if thresh.is_nan() || thresh <= 0.0 {
             self.temp_hot_samples = 0;
             if self.temp_throttle_active {
                 self.temp_throttle_active = false;
@@ -409,15 +440,27 @@ impl FasController {
         }
         self.temp_throttle_active = active;
         if active {
-            info!("{}", t_with_args("fas-temp-throttle-on", &fluent_args!(
-                "temp" => format!("{:.0}", self.current_temperature),
-                "threshold" => format!("{:.0}", self.temp_threshold),
-                "perf" => format!("{:.2}", self.cfg.core_temp_throttle_perf)
-            )));
+            info!(
+                "{}",
+                t_with_args(
+                    "fas-temp-throttle-on",
+                    &fluent_args!(
+                        "temp" => format!("{:.0}", self.current_temperature),
+                        "threshold" => format!("{:.0}", self.temp_threshold),
+                        "perf" => format!("{:.2}", self.cfg.core_temp_throttle_perf)
+                    )
+                )
+            );
         } else {
-            info!("{}", t_with_args("fas-temp-throttle-off", &fluent_args!(
-                "temp" => format!("{:.0}", self.current_temperature)
-            )));
+            info!(
+                "{}",
+                t_with_args(
+                    "fas-temp-throttle-off",
+                    &fluent_args!(
+                        "temp" => format!("{:.0}", self.current_temperature)
+                    )
+                )
+            );
         }
         // 封顶切换要立刻生效，不能等下一帧（帧可能已经停了）
         self.force_reapply();
@@ -469,7 +512,7 @@ impl FasController {
 
 #[cfg(test)]
 mod tests {
-    use super::{temp_throttle_next, TEMP_CONFIRM_SAMPLES, TEMP_RELEASE_HYSTERESIS};
+    use super::{TEMP_CONFIRM_SAMPLES, TEMP_RELEASE_HYSTERESIS, temp_throttle_next};
 
     #[test]
     fn temp_throttle_requires_consecutive_hot_samples() {

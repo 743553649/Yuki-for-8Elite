@@ -24,9 +24,9 @@
 //! `cpufreq_baseline.conf`。正常退出恢复成功后删除；下次启动若发现它还在，
 //! 说明上次没恢复干净，先按它恢复再接管。
 
+use log::{info, warn};
 use std::fs;
 use std::path::PathBuf;
-use log::{info, warn};
 
 use crate::common;
 

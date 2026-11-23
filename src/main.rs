@@ -16,18 +16,18 @@
  */
 
 mod common;
+pub mod fas_types;
+pub mod i18n;
 mod logger;
 mod monitor;
 mod scheduler;
-pub mod i18n;
 pub mod utils;
-pub mod fas_types;
+use crate::i18n::{load_language, t, t_with_args};
+use crate::scheduler::config::Config;
+use anyhow::Result;
+use log::{error, info};
 use std::sync::mpsc;
 use std::thread;
-use anyhow::Result;
-use log::{info, error};
-use crate::i18n::{t, t_with_args, load_language};
-use crate::scheduler::config::Config;
 
 fn main() -> Result<()> {
     // 1. 环境初始化
@@ -52,10 +52,16 @@ fn main() -> Result<()> {
     logger::init(&config.meta.loglevel)?;
 
     if let Some(error) = config_error {
-        error!("{}", t_with_args("config-load-failed", &fluent_args!(
-            "path" => config_path.display().to_string(),
-            "error" => error.to_string()
-        )));
+        error!(
+            "{}",
+            t_with_args(
+                "config-load-failed",
+                &fluent_args!(
+                    "path" => config_path.display().to_string(),
+                    "error" => error.to_string()
+                )
+            )
+        );
     }
 
     info!("{}", t("yumi-module-starting"));
@@ -65,16 +71,28 @@ fn main() -> Result<()> {
     match scheduler::baseline::restore_pending() {
         Ok(true) => info!("{}", t("baseline-restored")),
         Ok(false) => {}
-        Err(error) => error!("{}", t_with_args("baseline-restore-failed", &fluent_args!(
-            "error" => error.to_string()
-        ))),
+        Err(error) => error!(
+            "{}",
+            t_with_args(
+                "baseline-restore-failed",
+                &fluent_args!(
+                    "error" => error.to_string()
+                )
+            )
+        ),
     }
 
     // 6. 安装 SIGTERM/SIGINT 处理：停止服务时先恢复频率再退出
     if let Err(error) = common::install_signal_handlers() {
-        error!("{}", t_with_args("signal-handler-install-failed", &fluent_args!(
-            "error" => error.to_string()
-        )));
+        error!(
+            "{}",
+            t_with_args(
+                "signal-handler-install-failed",
+                &fluent_args!(
+                    "error" => error.to_string()
+                )
+            )
+        );
     }
 
     // 7. 创建通信通道
@@ -84,7 +102,13 @@ fn main() -> Result<()> {
     let scheduler_thread = match scheduler::start_scheduler_thread(rx) {
         Ok(handle) => handle,
         Err(e) => {
-            error!("{}", t_with_args("scheduler-module-start-failed", &fluent_args!("error" => e.to_string())));
+            error!(
+                "{}",
+                t_with_args(
+                    "scheduler-module-start-failed",
+                    &fluent_args!("error" => e.to_string())
+                )
+            );
             return Err(e);
         }
     };
@@ -95,7 +119,13 @@ fn main() -> Result<()> {
         .name("monitor_core".to_string())
         .spawn(move || {
             if let Err(e) = monitor::start_monitor(tx) {
-                error!("{}", t_with_args("monitor-module-crashed", &fluent_args!("error" => e.to_string())));
+                error!(
+                    "{}",
+                    t_with_args(
+                        "monitor-module-crashed",
+                        &fluent_args!("error" => e.to_string())
+                    )
+                );
             }
         })?;
 

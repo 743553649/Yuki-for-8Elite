@@ -9,8 +9,8 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use fs_extra::{dir, file};
 use serde::Deserialize;
-use xshell::{cmd, Shell};
-use zip::{write::FileOptions, CompressionMethod};
+use xshell::{Shell, cmd};
+use zip::{CompressionMethod, write::FileOptions};
 
 use crate::zip_ext::zip_create_from_directory_with_options;
 
@@ -62,7 +62,7 @@ fn get_date() -> String {
 
 fn build(sh: &Shell) -> Result<()> {
     let temp_dir = temp_dir();
-    
+
     // 读取 Cargo.toml (注意：因为通过 `cargo xtask` 运行，工作目录是项目根目录)
     let toml_content = fs::read_to_string("Cargo.toml")?;
     let data: CargoConfig = toml::from_str(&toml_content)?;
@@ -92,24 +92,24 @@ fn build(sh: &Shell) -> Result<()> {
     // 5. 组装 bin 目录
     let bin_path = temp_dir.join("core").join("bin");
     fs::create_dir_all(&bin_path)?;
-    
+
     file::copy(
         aarch64_bin_path(),
         bin_path.join("yumi"),
         &file::CopyOptions::new().overwrite(true),
     )?;
-    
+
     let webroot_dir = temp_dir.join("webroot");
     dir::copy(
         Path::new("webui").join("dist"),
         &webroot_dir,
         &dir::CopyOptions::new().overwrite(true).content_only(true),
     )?;
-    
+
     // 6. 打包 Zip
     let output_dir = Path::new("output");
     fs::create_dir_all(output_dir)?; // 确保 output 目录存在
-    
+
     let zip_filename = format!(
         "yumi-{}-{}-{}.zip",
         data.package.version,
@@ -123,7 +123,7 @@ fn build(sh: &Shell) -> Result<()> {
     let options: FileOptions<'_, ()> = FileOptions::default()
         .compression_method(CompressionMethod::Deflated)
         .compression_level(Some(9));
-        
+
     zip_create_from_directory_with_options(&zip_path, &temp_dir, |_| options)?;
 
     println!("构建并打包成功！");

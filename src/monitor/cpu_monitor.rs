@@ -140,28 +140,27 @@ pub async fn start_cpu_loop(tx: Sender<DaemonEvent>) -> Result<()> {
         // snapshots, including pending runtime on both sides of the sample.
         let mut next_threads = HashMap::new();
         let mut foreground_max_util = 0.0f32;
-        if pid > 0 {
-            if let Ok(entries) = std::fs::read_dir(format!("/proc/{pid}/task")) {
-                for entry in entries.flatten() {
-                    let Some(tid) = entry
-                        .file_name()
-                        .to_str()
-                        .and_then(|s| s.parse::<u32>().ok())
-                    else {
-                        continue;
-                    };
-                    let raw = match threads.get(&tid, 0) {
-                        Ok(value) => value,
-                        Err(aya::maps::MapError::KeyNotFound) => 0,
-                        Err(error) => return Err(error).context("read THREAD_RUN_TIME"),
-                    };
-                    let current =
-                        raw.saturating_add(pending_by_tid.get(&tid).copied().unwrap_or(0));
-                    let delta = runtime_delta(last_threads.get(&tid).copied(), current);
-                    foreground_max_util =
-                        foreground_max_util.max((delta as f32 / elapsed as f32).clamp(0.0, 1.0));
-                    next_threads.insert(tid, current);
-                }
+        if pid > 0
+            && let Ok(entries) = std::fs::read_dir(format!("/proc/{pid}/task"))
+        {
+            for entry in entries.flatten() {
+                let Some(tid) = entry
+                    .file_name()
+                    .to_str()
+                    .and_then(|s| s.parse::<u32>().ok())
+                else {
+                    continue;
+                };
+                let raw = match threads.get(&tid, 0) {
+                    Ok(value) => value,
+                    Err(aya::maps::MapError::KeyNotFound) => 0,
+                    Err(error) => return Err(error).context("read THREAD_RUN_TIME"),
+                };
+                let current = raw.saturating_add(pending_by_tid.get(&tid).copied().unwrap_or(0));
+                let delta = runtime_delta(last_threads.get(&tid).copied(), current);
+                foreground_max_util =
+                    foreground_max_util.max((delta as f32 / elapsed as f32).clamp(0.0, 1.0));
+                next_threads.insert(tid, current);
             }
         }
         last_threads = next_threads;
@@ -169,7 +168,7 @@ pub async fn start_cpu_loop(tx: Sender<DaemonEvent>) -> Result<()> {
             continue;
         }
         count = count.wrapping_add(1);
-        if count % 25 == 0 {
+        if count.is_multiple_of(25) {
             debug!(
                 "[CPU Monitor] cores={core_utils:?}, pid={pid}, foreground={foreground_max_util:.3}"
             );

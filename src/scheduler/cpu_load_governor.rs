@@ -15,15 +15,14 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-
-use crate::scheduler::config::CpuLoadGovernorConfig;
-use crate::scheduler::baseline::{self, PolicyBaseline};
 use super::cpufreq::{FrequencyRange, PolicyFrequency};
-use log::{info, debug, warn};
+use crate::scheduler::baseline::{self, PolicyBaseline};
+use crate::scheduler::config::CpuLoadGovernorConfig;
+use log::{debug, info, warn};
 use std::fs;
 
-use crate::i18n::{t, t_with_args};
 use crate::fluent_args;
+use crate::i18n::{t, t_with_args};
 
 struct ClusterState {
     frequency: PolicyFrequency,
@@ -48,7 +47,8 @@ impl ClusterState {
     }
 
     fn max_util(&self, core_utils: &[f32]) -> f32 {
-        self.affected_cpus.iter()
+        self.affected_cpus
+            .iter()
             .filter_map(|&cpu| core_utils.get(cpu))
             .copied()
             .fold(0.0_f32, f32::max)
@@ -84,7 +84,9 @@ impl CpuLoadGovernor {
 
     pub fn init_policies(&mut self, gov_cfg: &CpuLoadGovernorConfig) {
         self.release();
-        if !self.restore.is_empty() { return; }
+        if !self.restore.is_empty() {
+            return;
+        }
         self.cfg = gov_cfg.clone();
         self.normalize_cfg();
 
@@ -94,25 +96,35 @@ impl CpuLoadGovernor {
         for policy in &crate::scheduler::get_cpu_policies() {
             let pid = policy.id;
             let affected_cpus = Self::read_affected_cpus(pid);
-            if affected_cpus.is_empty() { continue; }
-            let Some(frequency) = PolicyFrequency::open(policy) else { continue; };
+            if affected_cpus.is_empty() {
+                continue;
+            }
+            let Some(frequency) = PolicyFrequency::open(policy) else {
+                continue;
+            };
             let boost_max = policy.boost_frequencies.iter().copied().max().unwrap_or(0);
             opened.push((pid, affected_cpus, boost_max, frequency));
         }
 
-        let baselines: Vec<PolicyBaseline> = opened.iter().map(|(id, _, _, frequency)| PolicyBaseline {
-            id: *id,
-            governor: frequency.original_governor().to_string(),
-            min: frequency.original_range().min,
-            max: frequency.original_range().max,
-        }).collect();
+        let baselines: Vec<PolicyBaseline> = opened
+            .iter()
+            .map(|(id, _, _, frequency)| PolicyBaseline {
+                id: *id,
+                governor: frequency.original_governor().to_string(),
+                min: frequency.original_range().min,
+                max: frequency.original_range().max,
+            })
+            .collect();
         baseline::ensure(&baselines, &[]);
 
         for (pid, affected_cpus, boost_max, mut frequency) in opened {
             frequency.select_governor(self.cfg.governor.as_deref());
             let available = frequency.available_range();
 
-            let init_perf = self.cfg.perf_init.clamp(self.cfg.perf_floor, self.cfg.perf_ceil);
+            let init_perf = self
+                .cfg
+                .perf_init
+                .clamp(self.cfg.perf_floor, self.cfg.perf_ceil);
             let mut cluster = ClusterState {
                 frequency,
                 affected_cpus,
@@ -124,29 +136,44 @@ impl CpuLoadGovernor {
             };
             let range = cluster.apply_range(&self.cfg);
 
-            info!("{}", t_with_args("clg-init", &fluent_args!(
-                "pid" => pid.to_string(),
-                "cpus" => format!("{:?}", cluster.affected_cpus),
-                "fmin" => (available.min / 1000).to_string(),
-                "fmax" => (available.max / 1000).to_string(),
-                "perf" => format!("{:.2}", init_perf),
-                "freq" => format!("{}-{}", range.min, range.max)
-            )));
+            info!(
+                "{}",
+                t_with_args(
+                    "clg-init",
+                    &fluent_args!(
+                        "pid" => pid.to_string(),
+                        "cpus" => format!("{:?}", cluster.affected_cpus),
+                        "fmin" => (available.min / 1000).to_string(),
+                        "fmax" => (available.max / 1000).to_string(),
+                        "perf" => format!("{:.2}", init_perf),
+                        "freq" => format!("{}-{}", range.min, range.max)
+                    )
+                )
+            );
 
             self.clusters.push(cluster);
         }
 
         self.active = !self.clusters.is_empty();
         if self.active {
-            info!("{}", t_with_args("clg-activated", &fluent_args!("count" => self.clusters.len().to_string())));
+            info!(
+                "{}",
+                t_with_args(
+                    "clg-activated",
+                    &fluent_args!("count" => self.clusters.len().to_string())
+                )
+            );
         } else {
             warn!("{}", t("clg-no-clusters"));
         }
     }
 
     pub fn release(&mut self) {
-        if self.active { info!("{}", t("clg-deactivated")); }
-        self.restore.extend(self.clusters.drain(..).map(|cluster| cluster.frequency));
+        if self.active {
+            info!("{}", t("clg-deactivated"));
+        }
+        self.restore
+            .extend(self.clusters.drain(..).map(|cluster| cluster.frequency));
         self.retry_restore();
         self.active = false;
         self.log_counter = 0;
@@ -166,17 +193,27 @@ impl CpuLoadGovernor {
         self.normalize_cfg();
         for cluster in &mut self.clusters {
             if governor_changed {
-                cluster.frequency.select_governor(self.cfg.governor.as_deref());
+                cluster
+                    .frequency
+                    .select_governor(self.cfg.governor.as_deref());
             }
-            cluster.current_perf = cluster.current_perf.clamp(self.cfg.perf_floor, self.cfg.perf_ceil);
+            cluster.current_perf = cluster
+                .current_perf
+                .clamp(self.cfg.perf_floor, self.cfg.perf_ceil);
             cluster.apply_range(&self.cfg);
         }
-        debug!("{}", t_with_args("clg-config-reloaded", &fluent_args!(
-            "up" => format!("{:.2}", self.cfg.up_threshold),
-            "down" => format!("{:.2}", self.cfg.down_threshold),
-            "floor" => format!("{:.2}", self.cfg.perf_floor),
-            "ceil" => format!("{:.2}", self.cfg.perf_ceil)
-        )));
+        debug!(
+            "{}",
+            t_with_args(
+                "clg-config-reloaded",
+                &fluent_args!(
+                    "up" => format!("{:.2}", self.cfg.up_threshold),
+                    "down" => format!("{:.2}", self.cfg.down_threshold),
+                    "floor" => format!("{:.2}", self.cfg.perf_floor),
+                    "ceil" => format!("{:.2}", self.cfg.perf_ceil)
+                )
+            )
+        );
     }
 
     /// 校验并规范化配置：防止 perf_floor > perf_ceil / NaN 导致 f32::clamp panic
@@ -184,16 +221,24 @@ impl CpuLoadGovernor {
         let floor = self.cfg.perf_floor;
         let ceil = self.cfg.perf_ceil;
         if floor.is_finite() && ceil.is_finite() && floor > ceil {
-            warn!("{}", t_with_args("clg-perf-clamped", &fluent_args!(
-                "floor" => format!("{:.2}", floor),
-                "ceil" => format!("{:.2}", ceil)
-            )));
+            warn!(
+                "{}",
+                t_with_args(
+                    "clg-perf-clamped",
+                    &fluent_args!(
+                        "floor" => format!("{:.2}", floor),
+                        "ceil" => format!("{:.2}", ceil)
+                    )
+                )
+            );
         }
         self.cfg.normalize();
     }
 
     pub fn on_load_update(&mut self, core_utils: &[f32]) {
-        if !self.active { return; }
+        if !self.active {
+            return;
+        }
 
         for cluster in &mut self.clusters {
             let raw_util = cluster.max_util(core_utils);
@@ -218,8 +263,7 @@ impl CpuLoadGovernor {
                 1.0
             };
 
-            let target_perf = (util * headroom)
-                .clamp(self.cfg.perf_floor, self.cfg.perf_ceil);
+            let target_perf = (util * headroom).clamp(self.cfg.perf_floor, self.cfg.perf_ceil);
             let old_perf = cluster.current_perf;
 
             if target_perf > old_perf {
@@ -232,8 +276,8 @@ impl CpuLoadGovernor {
                     continue;
                 }
 
-                let is_high_load = util >= self.cfg.up_threshold; 
-                let is_significant_jump = target_perf > old_perf + self.cfg.up_jump_threshold; 
+                let is_high_load = util >= self.cfg.up_threshold;
+                let is_significant_jump = target_perf > old_perf + self.cfg.up_jump_threshold;
 
                 if is_high_load || is_significant_jump {
                     cluster.current_perf += (target_perf - old_perf) * self.cfg.smoothing_up;
@@ -245,7 +289,7 @@ impl CpuLoadGovernor {
                     let gap = ((util - self.cfg.down_threshold) / span).clamp(0.0, 1.0);
                     let speed = self.cfg.smoothing_up
                         * (self.cfg.slow_up_scale + (1.0 - self.cfg.slow_up_scale) * gap);
-                    cluster.current_perf += (target_perf - old_perf) * speed; 
+                    cluster.current_perf += (target_perf - old_perf) * speed;
                 }
             } else {
                 cluster.up_wait = 0;
@@ -270,28 +314,38 @@ impl CpuLoadGovernor {
                 }
             }
 
-            cluster.current_perf = cluster.current_perf.clamp(self.cfg.perf_floor, self.cfg.perf_ceil);
+            cluster.current_perf = cluster
+                .current_perf
+                .clamp(self.cfg.perf_floor, self.cfg.perf_ceil);
             cluster.apply_range(&self.cfg);
         }
 
         self.log_counter += 1;
-        if self.log_counter % 25 == 0 {
+        if self.log_counter.is_multiple_of(25) {
             for c in &self.clusters {
                 let range = c.frequency.applied_range();
-                debug!("{}", t_with_args("clg-tick-log", &fluent_args!(
-                    "pid" => c.frequency.id.to_string(),
-                    "util" => format!("{:.0}", c.max_util(core_utils) * 100.0),
-                    "perf" => format!("{:.2}", c.current_perf),
-                    "freq" => format!("{}-{}", range.min, range.max),
-                    "boost" => c.boost_max.to_string()
-                )));
+                debug!(
+                    "{}",
+                    t_with_args(
+                        "clg-tick-log",
+                        &fluent_args!(
+                            "pid" => c.frequency.id.to_string(),
+                            "util" => format!("{:.0}", c.max_util(core_utils) * 100.0),
+                            "perf" => format!("{:.2}", c.current_perf),
+                            "freq" => format!("{}-{}", range.min, range.max),
+                            "boost" => c.boost_max.to_string()
+                        )
+                    )
+                );
             }
         }
     }
 
     fn read_affected_cpus(policy_id: i32) -> Vec<usize> {
         let path = format!(
-            "/sys/devices/system/cpu/cpufreq/policy{}/affected_cpus", policy_id);
+            "/sys/devices/system/cpu/cpufreq/policy{}/affected_cpus",
+            policy_id
+        );
         fs::read_to_string(&path)
             .unwrap_or_default()
             .split_whitespace()

@@ -210,10 +210,14 @@ impl PolicyFrequency {
 
     pub fn apply(&mut self, range: FrequencyRange) -> bool {
         // A partially successful update still leaves the cached endpoints in write order.
+        // 写入顺序必须保证任何中间态都满足 min <= max：
+        // 新下限高于旧上限时先抬下限（此时上限已足够高），否则先压上限。
         if self.applied.min_first(range) {
-            self.write_min(range.min, false) && self.write_max(range.max, false)
+            let min_ok = self.write_min(range.min, false);
+            min_ok && self.write_max(range.max, false)
         } else {
-            self.write_max(range.max, false) && self.write_min(range.min, false)
+            let max_ok = self.write_max(range.max, false);
+            max_ok && self.write_min(range.min, false)
         }
     }
 
@@ -247,10 +251,10 @@ impl PolicyFrequency {
                 "[CPUFreq] policy{} limits widened to {}-{} kHz, requested {}-{} kHz",
                 self.id, actual.min, actual.max, expected.min, expected.max
             );
-            if actual.max == expected.max || self.write_max(expected.max, true) {
-                if actual.min < expected.min {
-                    self.write_min(expected.min, true);
-                }
+            if (actual.max == expected.max || self.write_max(expected.max, true))
+                && actual.min < expected.min
+            {
+                self.write_min(expected.min, true);
             }
         }
     }

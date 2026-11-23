@@ -1,3 +1,6 @@
+# 配置结构版本（缺失按 0 处理并自动迁移）
+schema_version: 1
+
 # 元数据信息
 meta:
   name: "default_config"
